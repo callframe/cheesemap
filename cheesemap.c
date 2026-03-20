@@ -23,3 +23,21 @@ void cm_raw_drop(struct cheesemap_raw* map, uintptr_t entry_size,
   uint8_t* origin = cm_raw_origin(map, entry_size);
   fns->free(origin, fns->mem_usr);
 }
+
+void cm_new(struct cheesemap* map, uintptr_t entry_size,
+                          uint8_t* mem_usr, cm_malloc_fn malloc, cm_free_fn free,
+                          uint8_t* map_usr, cm_hash_fn hash,
+                          cm_compare_fn compare) {
+  assert(map != NULL);
+  assert(malloc != NULL && free != NULL);
+  assert(hash != NULL && compare != NULL);
+
+  struct cheesemap_fns fns = {
+      mem_usr, map_usr,  //
+      malloc,  free,     //
+      hash,    compare,  //
+  };
+
+  *map = (struct cheesemap){entry_size, fns, cm_raw_new()};
+}
+
