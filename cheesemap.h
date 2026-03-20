@@ -94,10 +94,11 @@ struct cheesemap {
   struct cheesemap_raw raw;
 };
 
-static inline struct cheesemap cm_new(uintptr_t entry_size, uint8_t* mem_usr,
-                                      cm_malloc_fn malloc, cm_free_fn free,
-                                      uint8_t* map_usr, cm_hash_fn hash,
-                                      cm_compare_fn compare) {
+static inline void cm_new(struct cheesemap* map, uintptr_t entry_size,
+                          uint8_t* mem_usr, cm_malloc_fn malloc, cm_free_fn free,
+                          uint8_t* map_usr, cm_hash_fn hash,
+                          cm_compare_fn compare) {
+  assert(map != NULL);
   assert(malloc != NULL && free != NULL);
   assert(hash != NULL && compare != NULL);
 
@@ -107,7 +108,7 @@ static inline struct cheesemap cm_new(uintptr_t entry_size, uint8_t* mem_usr,
       hash,    compare,  //
   };
 
-  return (struct cheesemap){entry_size, fns, cm_raw_new()};
+  *map = (struct cheesemap){entry_size, fns, cm_raw_new()};
 }
 
 static inline void cm_drop(struct cheesemap* map) {
