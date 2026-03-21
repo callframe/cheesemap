@@ -2,6 +2,7 @@
 CM_OPT_RELEASE ?= 0
 CM_OPT_CC_FLAGS ?=
 CM_OPT_ASSERT_PATH ?= <assert.h>
+CM_OPT_ENABLE_DEMO ?= 1
 
 CC ?= gcc
 
@@ -10,6 +11,10 @@ CM_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 CM_SOURCE := $(CM_DIR)/cheesemap.c
 CM_OBJECT := $(CM_SOURCE:.c=.o)
 CM_DEPEND := $(CM_SOURCE:.c=.d)
+
+CM_DEMO_SOURCE := $(CM_DIR)/cm-demo.c
+CM_DEMO := $(CM_DEMO_SOURCE:.c=)
+CM_DEMO_DEPEND := $(CM_DEMO_SOURCE:.c=.d)
 
 CM_CC_FLAGS := \
 	-Wall -Wextra \
@@ -25,13 +30,24 @@ CM_CC_FLAGS += $(CM_OPT_CC_FLAGS)
 CM_CC_FLAGS += -DCM_OPT_ASSERT_PATH='$(CM_OPT_ASSERT_PATH)'
 
 .PHONY: all
-all: $(CM_OBJECT)
+all:: $(CM_OBJECT)
 
 $(CM_OBJECT): $(CM_SOURCE)
-	$(CC) $(CM_CC_FLAGS) -c $< -o $@
+	$(CC) $(CM_CC_FLAGS) -c $^ -o $@
+
+ifeq ($(CM_OPT_ENABLE_DEMO),1)
+.PHONY: all
+all:: $(CM_DEMO)
+
+$(CM_DEMO): $(CM_DEMO_SOURCE) $(CM_OBJECT)
+	$(CC) $(CM_CC_FLAGS) $^ -o $@
+endif
 
 .PHONY: clean
 clean::
 	$(RM) $(CM_OBJECT) $(CM_DEPEND)
+ifeq ($(CM_OPT_ENABLE_DEMO),1)
+	$(RM) $(CM_DEMO) $(CM_DEMO_DEPEND)
+endif
 
--include $(CM_DEPEND)
+-include $(CM_DEPEND) $(CM_DEMO_DEPEND)
