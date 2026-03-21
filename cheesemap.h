@@ -129,12 +129,21 @@ struct cheesemap {
 void cm_new(struct cheesemap* map, uintptr_t key_size, uintptr_t value_size,
             uint8_t* mem_usr, cm_malloc_fn malloc, cm_free_fn free,
             uint8_t* map_usr, cm_hash_fn hash, cm_compare_fn compare);
+void cm_drop(struct cheesemap* map);
 
-static inline void cm_drop(struct cheesemap* map) {
-  assert(map != NULL);
+////////////////////////////////
+// cheesemap iterators
+//
 
-  cm_raw_drop(&map->raw, map->key_size, map->value_size, &map->fns);
-  memset(map, 0, sizeof(*map));
-}
+struct cheesemap_raw_iter {
+  bitmask_t curr_mask;
+  uintptr_t curr_index;
+  uint8_t* n_ctrl;
+  uint8_t* n_entry;
+  uint8_t* end;
+};
+
+void cm_raw_iter_init(struct cheesemap_raw_iter* iter,const struct cheesemap_raw* map, uintptr_t entry_size, uintptr_t start_index);
+bool cheesemap_raw_iter_next(struct cheesemap_raw_iter* iter, uintptr_t entry_size, uintptr_t* out_index);
 
 #endif

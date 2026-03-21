@@ -33,7 +33,7 @@ CM_CC_FLAGS += -DCM_OPT_ASSERT_PATH='$(CM_OPT_ASSERT_PATH)'
 all:: $(CM_OBJECT)
 
 $(CM_OBJECT): $(CM_SOURCE)
-	$(CC) $(CM_CC_FLAGS) -c $^ -o $@
+	$(CC) $(CM_CC_FLAGS) -c $< -o $@
 
 ifeq ($(CM_OPT_ENABLE_DEMO),1)
 .PHONY: all
