@@ -143,7 +143,10 @@ struct cheesemap_raw_iter {
   uint8_t* end;
 };
 
-void cm_raw_iter_init(struct cheesemap_raw_iter* iter,const struct cheesemap_raw* map, uintptr_t entry_size, uintptr_t start_index);
-bool cheesemap_raw_iter_next(struct cheesemap_raw_iter* iter, uintptr_t entry_size, uintptr_t* out_index);
+void cm_raw_iter_init(struct cheesemap_raw_iter* iter,
+                      const struct cheesemap_raw* map, uintptr_t entry_size,
+                      uintptr_t start_index);
+bool cheesemap_raw_iter_next(struct cheesemap_raw_iter* iter,
+                             uintptr_t entry_size, uintptr_t* out_index);
 
 #endif
