@@ -5,6 +5,7 @@
 // options and includes
 //
 
+#include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
@@ -58,11 +59,13 @@ struct cheesemap_fns {
 enum {
   CM_INITIAL_CAPACITY = CM_GROUP_SIZE,
   // -1 as i8, all bits set, top bit = 1
-  CM_CTRL_EMPTY = 0xFF,
+  CM_CTRL_EMPTY = 0xFF,  // 0b1111_1111
   // -128 as i8, top bit = 1
-  CM_CTRL_DELETED = 0x80,
+  CM_CTRL_DELETED = 0x80,  // 0b1000_0000
   // FULL entries have top bit = 0, lower 7 bits are H2 hash
-  CM_H2_MASK = 0x7F,
+  CM_H2_MASK = 0x7F,  // 0b0111_1111
+  // Mask to get bottom bit
+  CM_CTRL_END = 0x01,  // 0b0000_0001
   CM_FP_SIZE = 7
 };
 
@@ -71,7 +74,8 @@ static inline uintptr_t cm_h1(cm_hash_t hash) {
 }
 
 static inline uint8_t cm_h2(cm_hash_t hash) {
-  return (uint8_t)(hash & CM_H2_MASK);
+  uintptr_t top = hash >> (sizeof(cm_hash_t) * CHAR_BIT - CM_FP_SIZE);
+  return (uint8_t)(top & CM_H2_MASK);
 }
 
 extern const uint8_t CM_CTRL_STATIC_EMPTY[CM_GROUP_SIZE];
@@ -80,7 +84,7 @@ struct cheesemap_raw {
   // number of buckets as mask
   uintptr_t bucket_mask;
   // number of entries in the map
-  uintptr_t entry_count;
+  uintptr_t count;
   // number of entry left until resize
   uintptr_t growth_left;
   // pointer to the control bytes
@@ -90,29 +94,30 @@ struct cheesemap_raw {
 #define cm_raw_new() \
   ((struct cheesemap_raw){.ctrl = (uint8_t*)CM_CTRL_STATIC_EMPTY})
 
-void cm_raw_insert(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
-                   const void* key, const void* value);
-void cm_raw_drop(struct cheesemap_raw* map, uintptr_t entry_size,
-                 const struct cheesemap_fns* fns);
+bool cm_raw_insert(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
+                   uintptr_t key_size, const uint8_t* key, uintptr_t value_size,
+                   const uint8_t* value);
+void cm_raw_drop(struct cheesemap_raw* map, uintptr_t key_size,
+                 uintptr_t value_size, const struct cheesemap_fns* fns);
 
 ////////////////////////////////
 // cheesemap implementation
 //
 
 struct cheesemap {
-  uintptr_t entry_size;
+  uintptr_t key_size, value_size;
   struct cheesemap_fns fns;
   struct cheesemap_raw raw;
 };
 
-void cm_new(struct cheesemap* map, uintptr_t entry_size, uint8_t* mem_usr,
-            cm_malloc_fn malloc, cm_free_fn free, uint8_t* map_usr,
-            cm_hash_fn hash, cm_compare_fn compare);
+void cm_new(struct cheesemap* map, uintptr_t key_size, uintptr_t value_size,
+            uint8_t* mem_usr, cm_malloc_fn malloc, cm_free_fn free,
+            uint8_t* map_usr, cm_hash_fn hash, cm_compare_fn compare);
 
 static inline void cm_drop(struct cheesemap* map) {
   assert(map != NULL);
 
-  cm_raw_drop(&map->raw, map->entry_size, &map->fns);
+  cm_raw_drop(&map->raw, map->key_size, map->value_size, &map->fns);
   memset(map, 0, sizeof(*map));
 }
 

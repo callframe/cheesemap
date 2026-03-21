@@ -37,6 +37,14 @@ static inline void cm_sequence_next(struct sequence* sequence,
   sequence->pos &= bucket_mask;
 }
 
+/* ctrl ops */
+static inline bool cm_ctrl_is_special(uint8_t v) { return v & CM_CTRL_DELETED; }
+
+static inline bool cm_ctrl_is_empty(uint8_t v) {
+  assert(cm_ctrl_is_special(v) == true);
+  return (v & CM_CTRL_END) != 0;
+}
+
 /* group ops */
 static inline group_t cm_group_load(const uint8_t* ctrl);
 static inline bitmask_t cm_group_empty_or_deleted(group_t group);
@@ -59,16 +67,32 @@ static inline bitmask_t cm_group_empty_or_deleted(group_t group) {
 }
 
 /* static ctrl's */
-const uint8_t CM_CTRL_STATIC_EMPTY[CM_GROUP_SIZE] = {
-    CM_CTRL_EMPTY, CM_CTRL_EMPTY, CM_CTRL_EMPTY, CM_CTRL_EMPTY,
-    CM_CTRL_EMPTY, CM_CTRL_EMPTY, CM_CTRL_EMPTY, CM_CTRL_EMPTY,
-};
+const uint8_t CM_CTRL_STATIC_EMPTY[CM_GROUP_SIZE] = {[0 ... CM_GROUP_SIZE - 1] =
+                                                         CM_CTRL_EMPTY};
 
 /* hashmap implementation */
+static inline uint8_t* cm_raw_elem_at(const struct cheesemap_raw* map,
+                                      uintptr_t index, uintptr_t entry_size) {
+  assert(map != NULL);
+  assert(map->bucket_mask + 1 > index);
+
+  return map->ctrl - entry_size * index;
+}
+
 static inline uint8_t* cm_raw_origin(const struct cheesemap_raw* map,
                                      uintptr_t entry_size) {
   assert(map != NULL);
-  return map->ctrl - entry_size * (map->bucket_mask + 1);
+  return cm_raw_elem_at(map, map->bucket_mask + 1, entry_size);
+}
+
+static inline void cm_raw_ctrl_set(struct cheesemap_raw* map, uintptr_t index,
+                                   uint8_t ctrl) {
+  assert(map != NULL);
+
+  uintptr_t index2 =
+      ((index - CM_GROUP_SIZE) & map->bucket_mask) + CM_GROUP_SIZE;
+  map->ctrl[index] = ctrl;
+  map->ctrl[index2] = ctrl;
 }
 
 static bool cm_raw_find_insert_index_in_group(const struct cheesemap_raw* map,
@@ -97,33 +121,65 @@ static uintptr_t cm_raw_find_insert_index(const struct cheesemap_raw* map,
     group_t group = cm_group_load(ctrl);
 
     uintptr_t index;
-    if (cm_raw_find_insert_index_in_group(map, &group, &seq, &index)) return index;
+    if (cm_raw_find_insert_index_in_group(map, &group, &seq, &index))
+      return index;
     cm_sequence_next(&seq, map->bucket_mask);
   }
 }
 
-void cm_raw_insert(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
-                   cm_hash_t hash, const void* value) {
-  assert(map != NULL && fns != NULL);
+static void cm_raw_insert_at(struct cheesemap_raw* map, cm_hash_t hash,
+                             uintptr_t index, uintptr_t key_size,
+                             const uint8_t* key, uintptr_t value_size,
+                             const uint8_t* value) {
+  assert(map != NULL);
   assert(value != NULL);
+
+  uint8_t old_ctrl = map->ctrl[index];
+  map->growth_left -= cm_ctrl_is_empty(old_ctrl);
+  cm_raw_ctrl_set(map, index, cm_h2(hash));
+
+  uint8_t* elem = cm_raw_elem_at(map, index, key_size + value_size);
+  memcpy(elem, key, key_size);
+  elem += key_size;
+  memcpy(elem, value, value_size);
+
+  map->count += 1;
 }
 
-void cm_raw_drop(struct cheesemap_raw* map, uintptr_t entry_size,
-                 const struct cheesemap_fns* fns) {
+bool cm_raw_insert(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
+                   uintptr_t key_size, const uint8_t* key, uintptr_t value_size,
+                   const uint8_t* value) {
+  assert(map != NULL && fns != NULL);
+  assert(key != NULL && value != NULL);
+
+  cm_hash_t hash = fns->hash(key, fns->map_usr);
+  uintptr_t index = cm_raw_find_insert_index(map, hash);
+
+  uint8_t old_ctrl = map->ctrl[index];
+  if (map->growth_left == 0 && cm_ctrl_is_empty(old_ctrl)) {
+    // TODO: do resize
+  }
+
+  cm_raw_insert_at(map, hash, index, key_size, key, value_size, value);
+  return true;
+}
+
+void cm_raw_drop(struct cheesemap_raw* map, uintptr_t key_size,
+                 uintptr_t value_size, const struct cheesemap_fns* fns) {
   assert(map != NULL);
   assert(fns != NULL);
 
   if (map->ctrl == CM_CTRL_STATIC_EMPTY || map->ctrl == NULL) return;
 
-  uint8_t* origin = cm_raw_origin(map, entry_size);
+  uint8_t* origin = cm_raw_origin(map, key_size + value_size);
   fns->free(origin, fns->mem_usr);
 
   *map = cm_raw_new();
 }
 
-void cm_new(struct cheesemap* map, uintptr_t entry_size, uint8_t* mem_usr,
-            cm_malloc_fn malloc, cm_free_fn free, uint8_t* map_usr,
-            cm_hash_fn hash, cm_compare_fn compare) {
+void cm_new(struct cheesemap* map, uintptr_t key_size, uintptr_t value_size,
+            uint8_t* mem_usr, cm_malloc_fn malloc, cm_free_fn free,
+            uint8_t* map_usr, cm_hash_fn hash, cm_compare_fn compare) {
   assert(map != NULL);
   assert(malloc != NULL && free != NULL);
   assert(hash != NULL && compare != NULL);
@@ -133,5 +189,5 @@ void cm_new(struct cheesemap* map, uintptr_t entry_size, uint8_t* mem_usr,
       malloc,  free,     //
       hash,    compare,  //
   };
-  *map = (struct cheesemap){entry_size, fns, cm_raw_new()};
+  *map = (struct cheesemap){key_size, value_size, fns, cm_raw_new()};
 }
