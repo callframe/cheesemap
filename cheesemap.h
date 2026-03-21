@@ -29,8 +29,7 @@ enum {
 typedef uint64_t cm_hash_t;
 
 /* memory methods */
-typedef void* (*cm_malloc_fn)(uintptr_t size, uintptr_t alignment,
-                              uint8_t* user);
+typedef void* (*cm_malloc_fn)(uintptr_t size, uint8_t* user);
 typedef void (*cm_free_fn)(void* ptr, uint8_t* user);
 
 /* hash and compare methods */
@@ -57,7 +56,12 @@ struct cheesemap_fns {
 // [entries...][control bits...][mirror first CM_GROUP_SIZE bits]
 
 enum {
+  // cheesemap config
   CM_INITIAL_CAPACITY = CM_GROUP_SIZE,
+  CM_LOAD_DENOM = 8,
+  CM_LOAD_NUM = 7,
+  //
+  // ctrl ops
   // -1 as i8, all bits set, top bit = 1
   CM_CTRL_EMPTY = 0xFF,  // 0b1111_1111
   // -128 as i8, top bit = 1
@@ -66,7 +70,13 @@ enum {
   CM_H2_MASK = 0x7F,  // 0b0111_1111
   // Mask to get bottom bit
   CM_CTRL_END = 0x01,  // 0b0000_0001
-  CM_FP_SIZE = 7
+  // Number of fingerprint bytes
+  CM_FP_SIZE = 7,
+  //
+  // aux
+  // Size of a word in bits
+  CM_WORD_WIDTH = sizeof(uintptr_t) * CHAR_BIT,
+
 };
 
 static inline uintptr_t cm_h1(cm_hash_t hash) {
@@ -94,9 +104,15 @@ struct cheesemap_raw {
 #define cm_raw_new() \
   ((struct cheesemap_raw){.ctrl = (uint8_t*)CM_CTRL_STATIC_EMPTY})
 
+bool cm_raw_new_with(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
+                     uintptr_t key_size, uintptr_t value_size,
+                     uintptr_t initial_capacity);
 bool cm_raw_insert(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
                    uintptr_t key_size, const uint8_t* key, uintptr_t value_size,
                    const uint8_t* value);
+bool cm_raw_reserve(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
+                    uintptr_t key_size, uintptr_t value_size,
+                    uintptr_t additional);
 void cm_raw_drop(struct cheesemap_raw* map, uintptr_t key_size,
                  uintptr_t value_size, const struct cheesemap_fns* fns);
 

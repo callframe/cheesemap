@@ -16,8 +16,36 @@ static inline uintptr_t cm_ctz(uintptr_t val) {
 #error "unknown word width"
 #endif
 #else
-#error "ctz not implemented for this compiler"
+#error "ctz not implemented"
 #endif
+}
+
+static inline uintptr_t cm_clz(uintptr_t val) {
+  assert(val != 0);
+#if defined(__GNUC__) || defined(__clang__)
+#if UINTPTR_MAX == UINT64_MAX
+  return (uintptr_t)__builtin_clzll(val);
+#elif UINTPTR_MAX == UINT32_MAX
+  return (uintptr_t)__builtin_clz(val);
+#else
+#error "unknown word width"
+#endif
+#else
+#error "clz not implemented"
+#endif
+}
+
+#define cm_max(x, y) x > y ? x : y
+#define cm_ispow2(x) (((x) & ((x) - 1)) == 0)
+
+static inline uintptr_t cm_align_up(uintptr_t value, uintptr_t alignment) {
+  assert(cm_ispow2(alignment));
+  return (value + alignment - 1) & ~(alignment - 1);
+}
+
+static inline uintptr_t cm_npow2(uintptr_t v) {
+  if (v <= 1) return 1;
+  return (uintptr_t)1 << (CM_WORD_WIDTH - cm_clz(v - 1));
 }
 
 struct sequence {
@@ -71,6 +99,24 @@ const uint8_t CM_CTRL_STATIC_EMPTY[CM_GROUP_SIZE] = {[0 ... CM_GROUP_SIZE - 1] =
                                                          CM_CTRL_EMPTY};
 
 /* hashmap implementation */
+static inline uintptr_t cm_buckets_to_capacity(uintptr_t bucket_mask) {
+  uintptr_t num_buckets = bucket_mask + 1;
+  return (num_buckets / CM_LOAD_DENOM) * CM_LOAD_NUM;
+}
+
+static inline uintptr_t cm_capacity_to_buckets(uintptr_t capacity) {
+  uintptr_t min_buckets =
+      (capacity * CM_LOAD_DENOM + CM_LOAD_NUM - 1) / CM_LOAD_NUM;
+  uintptr_t buckets = cm_npow2(min_buckets);
+  return cm_max(buckets, CM_GROUP_SIZE);
+}
+
+static inline uintptr_t cm_ctrl_offset(uintptr_t buckets,
+                                       uintptr_t entry_size) {
+  uintptr_t offset = entry_size * buckets;
+  return cm_align_up(offset, CM_GROUP_SIZE);
+}
+
 static inline uint8_t* cm_raw_elem_at(const struct cheesemap_raw* map,
                                       uintptr_t index, uintptr_t entry_size) {
   assert(map != NULL);
@@ -82,7 +128,9 @@ static inline uint8_t* cm_raw_elem_at(const struct cheesemap_raw* map,
 static inline uint8_t* cm_raw_origin(const struct cheesemap_raw* map,
                                      uintptr_t entry_size) {
   assert(map != NULL);
-  return cm_raw_elem_at(map, map->bucket_mask + 1, entry_size);
+  uintptr_t buckets = map->bucket_mask + 1;
+  uintptr_t ctrl_offset = cm_ctrl_offset(buckets, entry_size);
+  return map->ctrl - ctrl_offset;
 }
 
 static inline void cm_raw_ctrl_set(struct cheesemap_raw* map, uintptr_t index,
@@ -146,6 +194,57 @@ static void cm_raw_insert_at(struct cheesemap_raw* map, cm_hash_t hash,
   map->count += 1;
 }
 
+static bool cm_raw_resize(struct cheesemap_raw* map,
+                          const struct cheesemap_fns* fns, uintptr_t key_size,
+                          uintptr_t value_size, uintptr_t new_capacity) {
+  assert(map != NULL && fns != NULL);
+
+  struct cheesemap_raw new_map;
+  bool success =
+      cm_raw_new_with(&new_map, fns, key_size, value_size, new_capacity);
+  if (!success) return success;
+
+  return true;
+}
+
+bool cm_raw_new_with(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
+                     uintptr_t key_size, uintptr_t value_size,
+                     uintptr_t initial_capacity) {
+  assert(map != NULL);
+  memset(map, 0, sizeof(*map));
+
+  uintptr_t buckets = cm_capacity_to_buckets(initial_capacity);
+  uintptr_t entry_size = key_size + value_size;
+  uintptr_t ctrl_offset = cm_ctrl_offset(buckets, entry_size);
+  uintptr_t size = ctrl_offset + buckets + CM_GROUP_SIZE;
+
+  uint8_t* ptr = fns->malloc(size, fns->mem_usr);
+  if (ptr == NULL) return false;
+
+  uint8_t* ctrl = ptr + ctrl_offset;
+  memset(ctrl, CM_CTRL_EMPTY, buckets);
+  memcpy(ctrl + buckets, ctrl, CM_GROUP_SIZE);
+
+  map->bucket_mask = buckets - 1;
+  map->growth_left = cm_buckets_to_capacity(map->bucket_mask);
+  map->ctrl = ctrl;
+
+  return true;
+}
+
+bool cm_raw_reserve(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
+                    uintptr_t key_size, uintptr_t value_size,
+                    uintptr_t additional) {
+  assert(map != NULL && fns != NULL);
+
+  if (map->growth_left >= additional) return true;
+  // TODO: inplace rehash
+  uintptr_t needed = map->count + additional;
+  uintptr_t capacity = cm_buckets_to_capacity(map->bucket_mask);
+  uintptr_t new_capacity = cm_max(needed, capacity + 1);
+  return cm_raw_resize(map, fns, key_size, value_size, new_capacity);
+}
+
 bool cm_raw_insert(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
                    uintptr_t key_size, const uint8_t* key, uintptr_t value_size,
                    const uint8_t* value) {
@@ -157,7 +256,9 @@ bool cm_raw_insert(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
 
   uint8_t old_ctrl = map->ctrl[index];
   if (map->growth_left == 0 && cm_ctrl_is_empty(old_ctrl)) {
-    // TODO: do resize
+    bool success = cm_raw_reserve(map, fns, key_size, value_size, 1);
+    if (!success) return success;
+    index = cm_raw_find_insert_index(map, hash);
   }
 
   cm_raw_insert_at(map, hash, index, key_size, key, value_size, value);
