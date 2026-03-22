@@ -46,7 +46,7 @@ int main(void) {
   cm_iter_init(&iter, &map);
   const char** word;
   int* count;
-  while (cm_iter_next(&iter, &map, (uint8_t**)&word, (uint8_t**)&count)) {
+  while (cm_iter_next_(&iter, &map, &word, &count)) {
     printf("  %s: %d\n", *word, *count);
   }
 

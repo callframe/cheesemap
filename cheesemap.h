@@ -176,6 +176,9 @@ void cm_iter_init(struct cheesemap_iter* iter, const struct cheesemap* map);
 bool cm_iter_next(struct cheesemap_iter* iter, const struct cheesemap* map,
                   uint8_t** out_key, uint8_t** out_value);
 
+#define cm_iter_next_(iter, map, out_key, out_val) \
+  cm_iter_next(iter, map, (uint8_t**)(out_key), (uint8_t**)(out_val))
+
 #ifdef __cplusplus
 }
 #endif
