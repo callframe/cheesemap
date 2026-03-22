@@ -31,26 +31,10 @@ enum {
 
 typedef uint64_t cm_hash_t;
 
-/* memory methods */
-typedef void* (*cm_malloc_fn)(uintptr_t size, uint8_t* user);
-typedef void (*cm_free_fn)(void* ptr, uint8_t* user);
-
 /* hash and compare methods */
 typedef cm_hash_t (*cm_hash_fn)(const uint8_t* key, uint8_t* user);
 typedef bool (*cm_compare_fn)(const uint8_t* key1, const uint8_t* key2,
                               uint8_t* user);
-
-////////////////////////////////
-// callback methods needed by cheesemap
-//
-
-struct cheesemap_fns {
-  uint8_t *mem_usr, *map_usr;
-  cm_malloc_fn malloc;
-  cm_free_fn free;
-  cm_hash_fn hash;
-  cm_compare_fn compare;
-};
 
 ////////////////////////////////
 // raw cheesemap implementation
@@ -107,23 +91,22 @@ struct cheesemap_raw {
 #define cm_raw_new() \
   ((struct cheesemap_raw){.ctrl = (uint8_t*)CM_CTRL_STATIC_EMPTY})
 
-bool cm_raw_new_with(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
-                     uintptr_t key_size, uintptr_t value_size,
-                     uintptr_t initial_capacity);
-bool cm_raw_insert(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
+bool cm_raw_new_with(struct cheesemap_raw* map, uintptr_t key_size,
+                     uintptr_t value_size, uintptr_t initial_capacity);
+bool cm_raw_insert(struct cheesemap_raw* map, cm_hash_fn hash, uint8_t* user,
                    uintptr_t key_size, const uint8_t* key, uintptr_t value_size,
                    const uint8_t* value);
-bool cm_raw_reserve(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
+bool cm_raw_reserve(struct cheesemap_raw* map, cm_hash_fn hash, uint8_t* user,
                     uintptr_t key_size, uintptr_t value_size,
                     uintptr_t additional);
-bool cm_raw_lookup(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
-                   uintptr_t key_size, const uint8_t* key, uintptr_t value_size,
-                   uint8_t** out_value);
-bool cm_raw_remove(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
-                   uintptr_t key_size, const uint8_t* key, uintptr_t value_size,
-                   uint8_t* out_value);
+bool cm_raw_lookup(struct cheesemap_raw* map, cm_hash_fn hash,
+                   cm_compare_fn compare, uint8_t* user, uintptr_t key_size,
+                   const uint8_t* key, uintptr_t value_size, uint8_t** out_value);
+bool cm_raw_remove(struct cheesemap_raw* map, cm_hash_fn hash,
+                   cm_compare_fn compare, uint8_t* user, uintptr_t key_size,
+                   const uint8_t* key, uintptr_t value_size, uint8_t* out_value);
 void cm_raw_drop(struct cheesemap_raw* map, uintptr_t key_size,
-                 uintptr_t value_size, const struct cheesemap_fns* fns);
+                 uintptr_t value_size);
 
 ////////////////////////////////
 // cheesemap implementation
@@ -131,13 +114,14 @@ void cm_raw_drop(struct cheesemap_raw* map, uintptr_t key_size,
 
 struct cheesemap {
   uintptr_t key_size, value_size;
-  struct cheesemap_fns fns;
+  uint8_t* user;
+  cm_hash_fn hash;
+  cm_compare_fn compare;
   struct cheesemap_raw raw;
 };
 
 void cm_new(struct cheesemap* map, uintptr_t key_size, uintptr_t value_size,
-            uint8_t* mem_usr, cm_malloc_fn malloc, cm_free_fn free,
-            uint8_t* map_usr, cm_hash_fn hash, cm_compare_fn compare);
+            uint8_t* user, cm_hash_fn hash, cm_compare_fn compare);
 void cm_drop(struct cheesemap* map);
 bool cm_insert(struct cheesemap* map, const uint8_t* key, const uint8_t* value);
 bool cm_lookup(struct cheesemap* map, const uint8_t* key, uint8_t** out_value);

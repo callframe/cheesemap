@@ -4,16 +4,6 @@
 
 #include "cheesemap.h"
 
-void* cm_malloc(uintptr_t size, uint8_t* user) {
-  (void)user;
-  return malloc(size);
-}
-
-void cm_free(void* ptr, uint8_t* user) {
-  (void)user;
-  free(ptr);
-}
-
 cm_hash_t cm_hash(const uint8_t* key, uint8_t* user) {
   (void)user;
   uint64_t k = *(const uint64_t*)key;
@@ -32,8 +22,7 @@ bool cm_compare(const uint8_t* key1, const uint8_t* key2, uint8_t* user) {
 
 int main() {
   struct cheesemap map;
-  cm_new(&map, sizeof(uint64_t), sizeof(uint64_t), NULL, cm_malloc, cm_free,
-         NULL, cm_hash, cm_compare);
+  cm_new(&map, sizeof(uint64_t), sizeof(uint64_t), NULL, cm_hash, cm_compare);
 
   const uint64_t num_entries = 1000000;
   printf("Stress test: inserting %lu entries...\n", num_entries);
