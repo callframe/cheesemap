@@ -41,9 +41,7 @@ int main() {
   for (uint64_t i = 0; i < num_entries; i++) {
     uint64_t key = i;
     uint64_t value = i * 2;
-    bool success =
-        cm_raw_insert(&map.raw, &map.fns, sizeof(uint64_t), (uint8_t*)&key,
-                      sizeof(uint64_t), (uint8_t*)&value);
+    bool success = cm_insert(&map, (uint8_t*)&key, (uint8_t*)&value);
     if (!success) {
       printf("Insert failed at i=%lu\n", i);
       cm_drop(&map);
@@ -60,6 +58,104 @@ int main() {
   printf("Map count: %lu\n", map.raw.count);
   printf("Map buckets: %lu\n", map.raw.bucket_mask + 1);
   printf("Growth left: %lu\n", map.raw.growth_left);
+
+  // Test lookups
+  printf("\nTesting lookups...\n");
+  for (uint64_t i = 0; i < 10; i++) {
+    uint64_t key = i * 100000;
+    uint8_t* value_ptr;
+    if (cm_lookup(&map, (uint8_t*)&key, &value_ptr)) {
+      uint64_t value = *(uint64_t*)value_ptr;
+      printf("  Lookup key=%lu -> value=%lu (expected %lu)\n", key, value,
+             key * 2);
+    } else {
+      printf("  Lookup key=%lu FAILED\n", key);
+    }
+  }
+
+  // Test iteration
+  printf("\nIterating first 10 entries...\n");
+  struct cheesemap_iter iter;
+  cm_iter_init(&iter, &map);
+  uintptr_t count = 0;
+  uint8_t *key_ptr, *value_ptr;
+  while (cm_iter_next(&iter, &map, &key_ptr, &value_ptr)) {
+    uint64_t key = *(uint64_t*)key_ptr;
+    uint64_t value = *(uint64_t*)value_ptr;
+    if (count < 10) {
+      printf("  [%lu] key=%lu, value=%lu\n", count, key, value);
+    }
+    count++;
+  }
+  printf("  Total iterated: %lu entries\n", count);
+
+  // Test removes
+  printf("\nTesting removes...\n");
+  for (uint64_t i = 0; i < 5; i++) {
+    uint64_t key = i * 200000;
+    uint64_t old_value;
+    if (cm_remove(&map, (uint8_t*)&key, (uint8_t*)&old_value)) {
+      printf("  Removed key=%lu, old_value=%lu\n", key, old_value);
+    } else {
+      printf("  Remove key=%lu FAILED\n", key);
+    }
+  }
+  printf("Map count after removes: %lu\n", map.raw.count);
+
+  // Verify removes worked
+  printf("\nVerifying removes...\n");
+  for (uint64_t i = 0; i < 5; i++) {
+    uint64_t key = i * 200000;
+    uint8_t* value_ptr;
+    if (cm_lookup(&map, (uint8_t*)&key, &value_ptr)) {
+      printf("  ERROR: key=%lu still exists!\n", key);
+    } else {
+      printf("  Confirmed key=%lu removed\n", key);
+    }
+  }
+
+  // Deep check: verify ALL remaining entries
+  printf("\nDeep check: verifying all %lu remaining entries...\n",
+         map.raw.count);
+  uint64_t checked = 0, errors = 0;
+  for (uint64_t i = 0; i < num_entries; i++) {
+    uint64_t key = i;
+    uint8_t* value_ptr;
+    bool should_exist = (i % 200000 != 0 || i / 200000 >= 5);
+
+    if (cm_lookup(&map, (uint8_t*)&key, &value_ptr)) {
+      uint64_t value = *(uint64_t*)value_ptr;
+      if (!should_exist) {
+        printf("  ERROR: key=%lu exists but should be removed!\n", key);
+        errors++;
+      } else if (value != key * 2) {
+        printf("  ERROR: key=%lu has wrong value %lu (expected %lu)\n", key,
+               value, key * 2);
+        errors++;
+      }
+      checked++;
+    } else {
+      if (should_exist) {
+        printf("  ERROR: key=%lu missing but should exist!\n", key);
+        errors++;
+      }
+    }
+  }
+  printf("  Checked %lu entries, found %lu errors\n", checked, errors);
+
+  // Verify iteration count matches
+  printf("\nVerifying iteration count...\n");
+  cm_iter_init(&iter, &map);
+  count = 0;
+  while (cm_iter_next(&iter, &map, &key_ptr, &value_ptr)) {
+    count++;
+  }
+  if (count == map.raw.count) {
+    printf("  OK: iteration count %lu matches map count\n", count);
+  } else {
+    printf("  ERROR: iteration count %lu != map count %lu\n", count,
+           map.raw.count);
+  }
 
   // Calculate memory usage
   uintptr_t entry_size = sizeof(uint64_t) + sizeof(uint64_t);
