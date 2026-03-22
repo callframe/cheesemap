@@ -1,7 +1,8 @@
-#include "cheesemap.h"
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
+
+#include "cheesemap.h"
 
 void* cm_malloc(uintptr_t size, uint8_t* user) {
   (void)user;
@@ -31,8 +32,7 @@ bool cm_compare(const uint8_t* key1, const uint8_t* key2, uint8_t* user) {
 
 int main() {
   struct cheesemap map;
-  cm_new(&map, sizeof(uint64_t), sizeof(uint64_t),
-         NULL, cm_malloc, cm_free,
+  cm_new(&map, sizeof(uint64_t), sizeof(uint64_t), NULL, cm_malloc, cm_free,
          NULL, cm_hash, cm_compare);
 
   const uint64_t num_entries = 1000000;
@@ -41,9 +41,9 @@ int main() {
   for (uint64_t i = 0; i < num_entries; i++) {
     uint64_t key = i;
     uint64_t value = i * 2;
-    bool success = cm_raw_insert(&map.raw, &map.fns,
-                                  sizeof(uint64_t), (uint8_t*)&key,
-                                  sizeof(uint64_t), (uint8_t*)&value);
+    bool success =
+        cm_raw_insert(&map.raw, &map.fns, sizeof(uint64_t), (uint8_t*)&key,
+                      sizeof(uint64_t), (uint8_t*)&value);
     if (!success) {
       printf("Insert failed at i=%lu\n", i);
       cm_drop(&map);
@@ -65,19 +65,20 @@ int main() {
   uintptr_t entry_size = sizeof(uint64_t) + sizeof(uint64_t);
   uintptr_t buckets = map.raw.bucket_mask + 1;
   uintptr_t data_size = entry_size * buckets;
-  uintptr_t ctrl_size = buckets + 8; // buckets + mirror
+  uintptr_t ctrl_size = buckets + 8;  // buckets + mirror
   uintptr_t total_size = data_size + ctrl_size;
 
   printf("\nMemory usage:\n");
-  printf("  Entries: %lu x %lu bytes = %lu bytes\n",
-         buckets, entry_size, data_size);
+  printf("  Entries: %lu x %lu bytes = %lu bytes\n", buckets, entry_size,
+         data_size);
   printf("  Control: %lu bytes\n", ctrl_size);
-  printf("  Total: %lu bytes (%.2f MB)\n",
-         total_size, total_size / (1024.0 * 1024.0));
+  printf("  Total: %lu bytes (%.2f MB)\n", total_size,
+         total_size / (1024.0 * 1024.0));
   printf("  Load factor: %.2f%% (%lu / %lu)\n",
          (map.raw.count * 100.0) / buckets, map.raw.count, buckets);
   printf("  Overhead: %.2f%% ((total - actual) / actual)\n",
-         ((total_size - (num_entries * entry_size)) * 100.0) / (num_entries * entry_size));
+         ((total_size - (num_entries * entry_size)) * 100.0) /
+             (num_entries * entry_size));
 
   cm_drop(&map);
   printf("\nDone!\n");

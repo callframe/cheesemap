@@ -113,6 +113,12 @@ bool cm_raw_insert(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
 bool cm_raw_reserve(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
                     uintptr_t key_size, uintptr_t value_size,
                     uintptr_t additional);
+bool cm_raw_lookup(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
+                   uintptr_t key_size, const uint8_t* key, uintptr_t value_size,
+                   uint8_t** out_value);
+bool cm_raw_remove(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
+                   uintptr_t key_size, const uint8_t* key, uintptr_t value_size,
+                   uint8_t* out_value);
 void cm_raw_drop(struct cheesemap_raw* map, uintptr_t key_size,
                  uintptr_t value_size, const struct cheesemap_fns* fns);
 

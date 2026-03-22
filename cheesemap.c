@@ -20,10 +20,6 @@ static inline uintptr_t cm_ctz(uintptr_t val) {
 #endif
 }
 
-static inline uintptr_t cm_bitmask_to_index(bitmask_t mask) {
-  return cm_ctz(mask) / CHAR_BIT;
-}
-
 static inline uintptr_t cm_clz(uintptr_t val) {
   assert(val != 0);
 #if defined(__GNUC__) || defined(__clang__)
@@ -37,6 +33,20 @@ static inline uintptr_t cm_clz(uintptr_t val) {
 #else
 #error "clz not implemented"
 #endif
+}
+
+static inline uintptr_t cm_bitmask_lowest_set_bit(bitmask_t mask) {
+  return cm_ctz(mask) / CHAR_BIT;
+}
+
+static inline uintptr_t cm_bitmask_ctz(bitmask_t mask) {
+  if (mask == 0) return sizeof(mask) * CHAR_BIT / CHAR_BIT;
+  return cm_ctz(mask) / CHAR_BIT;
+}
+
+static inline uintptr_t cm_bitmask_clz(bitmask_t mask) {
+  if (mask == 0) return sizeof(mask) * CHAR_BIT / CHAR_BIT;
+  return cm_clz(mask) / CHAR_BIT;
 }
 
 #define cm_max(x, y) x > y ? x : y
@@ -79,8 +89,8 @@ static inline bool cm_ctrl_is_empty(uint8_t v) {
 
 /* group ops */
 static inline group_t cm_group_load(const uint8_t* ctrl);
-static inline bitmask_t cm_group_empty_or_deleted(group_t group);
-static inline bitmask_t cm_group_full(group_t group);
+static inline bitmask_t cm_group_match_empty_or_deleted(group_t group);
+static inline bitmask_t cm_group_match_full(group_t group);
 
 /* scalar implementation */
 static inline group_t cm_group_repeat(uint8_t v) {
@@ -95,12 +105,23 @@ static inline group_t cm_group_load(const uint8_t* ctrl) {
   return v;
 }
 
-static inline bitmask_t cm_group_empty_or_deleted(group_t group) {
+static inline bitmask_t cm_group_match_empty_or_deleted(group_t group) {
   return group & cm_group_repeat(CM_CTRL_DELETED);
 }
 
-static inline bitmask_t cm_group_full(group_t group) {
-  return cm_group_empty_or_deleted(group) ^ cm_group_repeat(CM_CTRL_DELETED);
+static inline bitmask_t cm_group_match_empty(group_t group) {
+  return (group & (group << 1)) & cm_group_repeat(CM_CTRL_DELETED);
+}
+
+static inline bitmask_t cm_group_match_full(group_t group) {
+  return cm_group_match_empty_or_deleted(group) ^
+         cm_group_repeat(CM_CTRL_DELETED);
+}
+
+static inline bitmask_t cm_group_match_tag(group_t group, uint8_t tag) {
+  group_t cmp = group ^ cm_group_repeat(tag);
+  return (cmp - cm_group_repeat(CM_CTRL_END)) & ~cmp &
+         cm_group_repeat(CM_CTRL_DELETED);
 }
 
 /* static ctrl's */
@@ -160,11 +181,11 @@ static bool cm_raw_find_insert_index_in_group(const struct cheesemap_raw* map,
   assert(group != NULL && seq != NULL);
   assert(out_index != NULL);
 
-  bitmask_t mask = cm_group_empty_or_deleted(*group);
+  bitmask_t mask = cm_group_match_empty_or_deleted(*group);
   if (mask == 0) return false;
 
-  uintptr_t bit = cm_bitmask_to_index(mask);
-  *out_index = (seq->pos + bit) & map->bucket_mask;
+  uintptr_t bucket_offset = cm_bitmask_lowest_set_bit(mask);
+  *out_index = (seq->pos + bucket_offset) & map->bucket_mask;
   return true;
 }
 
@@ -180,6 +201,58 @@ static uintptr_t cm_raw_find_insert_index(const struct cheesemap_raw* map,
     uintptr_t index;
     if (cm_raw_find_insert_index_in_group(map, &group, &seq, &index))
       return index;
+    cm_sequence_next(&seq, map->bucket_mask);
+  }
+}
+
+static bool cm_raw_find_in_group(const struct cheesemap_raw* map,
+                                 const struct cheesemap_fns* fns, group_t group,
+                                 const struct sequence* seq, uint8_t h2,
+                                 uintptr_t key_size, const uint8_t* key,
+                                 uintptr_t* out_index) {
+  assert(map != NULL && fns != NULL);
+  assert(seq != NULL);
+  assert(key != NULL && out_index != NULL);
+
+  bitmask_t mask = cm_group_match_tag(group, h2);
+  while (mask != 0) {
+    uintptr_t bucket_offset = cm_bitmask_lowest_set_bit(mask);
+    uintptr_t index = (seq->pos + bucket_offset) & map->bucket_mask;
+
+    uint8_t* elem = cm_raw_elem_at(map, index, key_size);
+    if (fns->compare(key, elem, fns->map_usr)) {
+      *out_index = index;
+      return true;
+    }
+
+    mask &= mask - 1;
+  }
+
+  return false;
+}
+
+static bool cm_raw_find(const struct cheesemap_raw* map,
+                        const struct cheesemap_fns* fns, cm_hash_t hash,
+                        uintptr_t key_size, const uint8_t* key,
+                        uintptr_t* out_index) {
+  assert(map != NULL && fns != NULL);
+  assert(key != NULL && out_index != NULL);
+
+  uint8_t h2 = cm_h2(hash);
+  struct sequence seq = sequence_init(cm_h1(hash) & map->bucket_mask, 0);
+
+  while (true) {
+    uint8_t* ctrl = &map->ctrl[seq.pos];
+    group_t group = cm_group_load(ctrl);
+
+    if (cm_raw_find_in_group(map, fns, group, &seq, h2, key_size, key,
+                             out_index))
+      return true;
+
+    bitmask_t empty_mask = cm_group_match_empty_or_deleted(group) ^
+                           cm_group_repeat(CM_CTRL_DELETED);
+    if (empty_mask != 0) return false;
+
     cm_sequence_next(&seq, map->bucket_mask);
   }
 }
@@ -287,6 +360,58 @@ bool cm_raw_reserve(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
   return cm_raw_resize(map, fns, key_size, value_size, new_capacity);
 }
 
+bool cm_raw_lookup(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
+                   uintptr_t key_size, const uint8_t* key, uintptr_t value_size,
+                   uint8_t** out_value) {
+  assert(map != NULL && fns != NULL);
+  assert(key != NULL && out_value != NULL);
+
+  cm_hash_t hash = fns->hash(key, fns->map_usr);
+  uintptr_t index;
+
+  if (!cm_raw_find(map, fns, hash, key_size, key, &index)) return false;
+
+  uint8_t* elem = cm_raw_elem_at(map, index, key_size + value_size);
+  *out_value = elem + key_size;
+  return true;
+}
+
+bool cm_raw_remove(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
+                   uintptr_t key_size, const uint8_t* key, uintptr_t value_size,
+                   uint8_t* out_value) {
+  assert(map != NULL && fns != NULL);
+  assert(key != NULL);
+
+  cm_hash_t hash = fns->hash(key, fns->map_usr);
+  uintptr_t index;
+
+  if (!cm_raw_find(map, fns, hash, key_size, key, &index)) return false;
+
+  if (out_value != NULL) {
+    uint8_t* elem = cm_raw_elem_at(map, index, key_size + value_size);
+    memcpy(out_value, elem + key_size, value_size);
+  }
+
+  uintptr_t index_before = (index - CM_GROUP_SIZE) & map->bucket_mask;
+  group_t group_before = cm_group_load(&map->ctrl[index_before]);
+  group_t group_at = cm_group_load(&map->ctrl[index]);
+
+  bitmask_t empty_before = cm_group_match_empty(group_before);
+  bitmask_t empty_after = cm_group_match_empty(group_at);
+
+  uintptr_t empty_count =
+      cm_bitmask_clz(empty_before) + cm_bitmask_ctz(empty_after);
+  uint8_t ctrl =
+      (empty_count >= CM_GROUP_SIZE) ? CM_CTRL_DELETED : CM_CTRL_EMPTY;
+
+  if (ctrl == CM_CTRL_EMPTY) map->growth_left += 1;
+
+  cm_raw_ctrl_set(map, index, ctrl);
+  map->count -= 1;
+
+  return true;
+}
+
 bool cm_raw_insert(struct cheesemap_raw* map, const struct cheesemap_fns* fns,
                    uintptr_t key_size, const uint8_t* key, uintptr_t value_size,
                    const uint8_t* value) {
@@ -364,7 +489,7 @@ void cm_raw_iter_init(struct cheesemap_raw_iter* iter,
   uint8_t* entry = cm_raw_elem_at(map, start_index, entry_size);
 
   group_t group = cm_group_load(ctrl);
-  bitmask_t mask = cm_group_full(group);
+  bitmask_t mask = cm_group_match_full(group);
 
   iter->curr_mask = mask;
   iter->curr_index = start_index;
@@ -379,7 +504,7 @@ static inline void cm_raw_iter_next_inner_slow(
 
   group_t group = cm_group_load(iter->n_ctrl);
   iter->n_ctrl += CM_GROUP_SIZE;
-  iter->curr_mask = cm_group_full(group);
+  iter->curr_mask = cm_group_match_full(group);
   iter->curr_index += CM_GROUP_SIZE;
 }
 
@@ -387,10 +512,10 @@ static inline uintptr_t cm_raw_iter_next_inner_fast(
     struct cheesemap_raw_iter* iter) {
   assert(iter != NULL);
 
-  uintptr_t bit = cm_bitmask_to_index(iter->curr_mask);
+  uintptr_t bucket_offset = cm_bitmask_lowest_set_bit(iter->curr_mask);
   iter->curr_mask &= iter->curr_mask - 1;
 
-  return iter->curr_index + bit;
+  return iter->curr_index + bucket_offset;
 }
 
 bool cheesemap_raw_iter_next(struct cheesemap_raw_iter* iter,
