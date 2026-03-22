@@ -17,7 +17,7 @@ CM_DEMO := $(CM_DEMO_SOURCE:.c=)
 CM_DEMO_DEPEND := $(CM_DEMO_SOURCE:.c=.d)
 
 CM_CC_FLAGS := \
-	-Wall -Wextra \
+	-Wall -Wextra -Werror \
 	-MMD -MP -I$(CM_DIR)
 
 ifeq ($(CM_OPT_RELEASE),1)
