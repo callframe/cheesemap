@@ -1,6 +1,10 @@
 #ifndef CHEESEMAP
 #define CHEESEMAP
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 ////////////////////////////////
 // options and includes
 //
@@ -154,5 +158,10 @@ void cm_raw_iter_init(struct cheesemap_raw_iter* iter,
                       uintptr_t start_index);
 bool cheesemap_raw_iter_next(struct cheesemap_raw_iter* iter,
                              uintptr_t entry_size, uintptr_t* out_index);
+
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

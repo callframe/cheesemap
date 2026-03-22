@@ -249,9 +249,7 @@ static bool cm_raw_find(const struct cheesemap_raw* map,
                              out_index))
       return true;
 
-    bitmask_t empty_mask = cm_group_match_empty_or_deleted(group) ^
-                           cm_group_repeat(CM_CTRL_DELETED);
-    if (empty_mask != 0) return false;
+    if (cm_group_match_empty(group) != 0) return false;
 
     cm_sequence_next(&seq, map->bucket_mask);
   }
