@@ -1,8 +1,9 @@
-# Header in which assert(x) is defined
 CM_OPT_RELEASE ?= 0
 CM_OPT_CC_FLAGS ?=
 CM_OPT_ASSERT_PATH ?= <assert.h>
 CM_OPT_ENABLE_DEMO ?= 1
+CM_OPT_ENABLE_UBSAN ?= 0
+CM_OPT_ENABLE_ASAN ?= 0
 
 CC ?= gcc
 
@@ -28,6 +29,14 @@ endif
 
 CM_CC_FLAGS += $(CM_OPT_CC_FLAGS)
 CM_CC_FLAGS += -DCM_OPT_ASSERT_PATH='$(CM_OPT_ASSERT_PATH)'
+
+ifeq ($(CM_OPT_ENABLE_UBSAN),1)
+	CM_CC_FLAGS += -fsanitize=undefined
+endif
+
+ifeq ($(CM_OPT_ENABLE_ASAN),1)
+	CM_CC_FLAGS += -fsanitize=address
+endif
 
 .PHONY: all
 all:: $(CM_OBJECT)

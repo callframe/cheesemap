@@ -4,7 +4,7 @@
 
 #include "cheesemap.h"
 
-cm_hash_t cm_hash(const uint8_t* key, uint8_t* user) {
+cm_hash_t hash_u64(const uint8_t* key, uint8_t* user) {
   (void)user;
   uint64_t k = *(const uint64_t*)key;
   k ^= k >> 33;
@@ -15,14 +15,78 @@ cm_hash_t cm_hash(const uint8_t* key, uint8_t* user) {
   return k;
 }
 
-bool cm_compare(const uint8_t* key1, const uint8_t* key2, uint8_t* user) {
+bool compare_u64(const uint8_t* key1, const uint8_t* key2, uint8_t* user) {
   (void)user;
   return *(const uint64_t*)key1 == *(const uint64_t*)key2;
 }
 
+cm_hash_t hash_u32(const uint8_t* key, uint8_t* user) {
+  (void)user;
+  uint64_t k = *(const uint32_t*)key;
+  k ^= k >> 33;
+  k *= 0xff51afd7ed558ccdULL;
+  k ^= k >> 33;
+  k *= 0xc4ceb9fe1a85ec53ULL;
+  k ^= k >> 33;
+  return k;
+}
+
+bool compare_u32(const uint8_t* key1, const uint8_t* key2, uint8_t* user) {
+  (void)user;
+  return *(const uint32_t*)key1 == *(const uint32_t*)key2;
+}
+
 int main() {
+  printf("=== Alignment test (uint32 key, uint64 value) ===\n");
+  {
+    struct cheesemap amap;
+    cm_new(&amap, sizeof(uint32_t), _Alignof(uint32_t), sizeof(uint64_t),
+           _Alignof(uint64_t), NULL, hash_u32, compare_u32);
+
+    printf("  key_size=%lu, value_size=%lu\n", amap.key_size, amap.value_size);
+    printf("  value_offset=%lu (expected 8, padding=4)\n", amap.value_offset);
+    printf("  entry_size=%lu (expected 16)\n", amap.entry_size);
+
+    if (amap.value_offset != 8 || amap.entry_size != 16) {
+      printf("  ERROR: alignment calculation wrong!\n");
+      return 1;
+    }
+
+    for (uint32_t i = 0; i < 1000; i++) {
+      uint32_t key = i;
+      uint64_t value = (uint64_t)i * 0x100000001ULL;
+      cm_insert(&amap, (uint8_t*)&key, (uint8_t*)&value);
+    }
+
+    uint64_t errors = 0;
+    for (uint32_t i = 0; i < 1000; i++) {
+      uint32_t key = i;
+      uint8_t* value_ptr;
+      if (cm_lookup(&amap, (uint8_t*)&key, &value_ptr)) {
+        uint64_t value = *(uint64_t*)value_ptr;
+        uint64_t expected = (uint64_t)i * 0x100000001ULL;
+        if (value != expected) {
+          printf("  ERROR: key=%u value=%lu expected=%lu\n", i, value,
+                 expected);
+          errors++;
+        }
+      } else {
+        printf("  ERROR: key=%u not found\n", i);
+        errors++;
+      }
+    }
+
+    if (errors == 0) {
+      printf("  OK: all 1000 entries verified with correct alignment\n");
+    }
+
+    cm_drop(&amap);
+  }
+  printf("\n");
+
   struct cheesemap map;
-  cm_new(&map, sizeof(uint64_t), sizeof(uint64_t), NULL, cm_hash, cm_compare);
+  cm_new(&map, sizeof(uint64_t), _Alignof(uint64_t), sizeof(uint64_t),
+         _Alignof(uint64_t), NULL, hash_u64, compare_u64);
 
   const uint64_t num_entries = 1000000;
   printf("Stress test: inserting %lu entries...\n", num_entries);
@@ -147,7 +211,7 @@ int main() {
   }
 
   // Calculate memory usage
-  uintptr_t entry_size = sizeof(uint64_t) + sizeof(uint64_t);
+  uintptr_t entry_size = map.entry_size;
   uintptr_t buckets = map.raw.bucket_mask + 1;
   uintptr_t data_size = entry_size * buckets;
   uintptr_t ctrl_size = buckets + 8;  // buckets + mirror
