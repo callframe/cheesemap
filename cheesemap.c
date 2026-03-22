@@ -498,9 +498,7 @@ bool cm_reserve(struct cheesemap* map, uintptr_t additional) {
 
 /* iterator */
 static inline uint8_t* cm_raw_iter_next_entry(
-    const struct cheesemap_raw_iter* iter, uint8_t* old_entry,
-    uintptr_t entry_size) {
-  assert(iter != NULL);
+    uint8_t* old_entry, uintptr_t entry_size) {
   return old_entry - entry_size * CM_GROUP_SIZE;
 }
 
@@ -523,7 +521,7 @@ void cm_raw_iter_init(struct cheesemap_raw_iter* iter,
   iter->curr_mask = mask;
   iter->curr_index = start_index;
   iter->n_ctrl = ctrl + CM_GROUP_SIZE;
-  iter->n_entry = cm_raw_iter_next_entry(iter, entry, entry_size);
+  iter->n_entry = cm_raw_iter_next_entry(entry, entry_size);
   iter->end = map->ctrl + buckets;
 }
 
@@ -561,7 +559,7 @@ bool cm_raw_iter_next(struct cheesemap_raw_iter* iter, uintptr_t entry_size,
     if (iter->n_ctrl >= iter->end) return false;
 
     cm_raw_iter_next_inner_slow(iter);
-    iter->n_entry = cm_raw_iter_next_entry(iter, iter->n_entry, entry_size);
+    iter->n_entry = cm_raw_iter_next_entry(iter->n_entry, entry_size);
   }
 }
 
