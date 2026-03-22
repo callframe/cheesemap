@@ -1,83 +1,71 @@
-#include <stddef.h>
-#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "cheesemap.h"
 
-struct user_info {
-  const char* country;
-  int age;
-  int zip;
-};
+// Convenience macro for array length
+#define countof(arr) (sizeof(arr) / sizeof(*(arr)))
 
-static const char* NAME = "Max Mustermann";
-static struct user_info INFO = {
-    .age = 23,
-    .country = "germany",
-    .zip = 69420,
-};
-
-static const char* NAME2 = "Peter Urs";
-static struct user_info INFO2 = {
-    .age = 64,
-    .country = "switzerland",
-    .zip = 1201,
-};
-
-uint64_t hash(const uint8_t* key, uint8_t* user) {
+// Simple hash function for string keys
+uint64_t hash_string(const uint8_t* key, uint8_t* user) {
   (void)user;
+  const char* str = *(const char**)key;
+  uint64_t hash = 5381;
+  int c;
+  while ((c = *str++)) hash = ((hash << 5) + hash) + c;  // hash * 33 + c
+  return hash;
+}
 
-  const char* name = (const char*)key;
-  uint64_t count;
-  while (*name) {
-    count++;
-    name++;
+// Compare function for string keys
+bool compare_string(const uint8_t* key1, const uint8_t* key2, uint8_t* user) {
+  (void)user;
+  return strcmp(*(const char**)key1, *(const char**)key2) == 0;
+}
+
+int main(void) {
+  // Create a map: string -> int (word frequency counter)
+  struct cheesemap map;
+  cm_new_(&map, const char*, int, NULL, hash_string, compare_string);
+
+  // Count word frequencies
+  const char* words[] = {"hello",     "world", "hello",
+                         "cheesemap", "world", "hello"};
+  for (size_t i = 0; i < countof(words); i++) {
+    int* count;
+    if (cm_lookup_(&map, words[i], &count)) {
+      (*count)++;  // Word exists, increment
+    } else {
+      int initial = 1;
+      cm_insert_(&map, words[i], initial);
+    }
   }
 
-  return count;
-}
+  // Iterate and print all word counts
+  printf("Word frequencies:\n");
+  struct cheesemap_iter iter;
+  cm_iter_init(&iter, &map);
+  const char** word;
+  int* count;
+  while (cm_iter_next(&iter, &map, (uint8_t**)&word, (uint8_t**)&count)) {
+    printf("  %s: %d\n", *word, *count);
+  }
 
-bool compare(const uint8_t* key1, const uint8_t* key2, uint8_t* user) {
-  (void)user;
+  // Lookup a specific word
+  const char* search = "hello";
+  if (cm_lookup_(&map, search, &count)) {
+    printf("\n'%s' appears %d times\n", search, *count);
+  }
 
-  const char* name1 = (const char*)key1;
-  const char* name2 = (const char*)key2;
-  return strcmp(name1, name2) == 0;
-}
+  // Remove a word
+  const char* remove = "world";
+  cm_remove_(&map, remove, NULL);
+  printf("Removed '%s'\n", remove);
 
-int main() {
-  struct cheesemap map;
-  cm_new(&map, sizeof(const char*), _Alignof(const char*),
-         sizeof(struct user_info), _Alignof(struct user_info), NULL, hash,
-         compare);
-
-  bool ok = cm_insert(&map, (const uint8_t*)NAME, (uint8_t*)&INFO);
-  if (!ok) return 1;
-
-  ok = cm_insert(&map, (const uint8_t*)NAME2, (const uint8_t*)&INFO2);
-  if (!ok) return 1;
-
-  struct user_info* found_max;
-  ok = cm_lookup(&map, (const uint8_t*)NAME, (uint8_t**)&found_max);
-  if (!ok) return 1;
-
-  if (memcmp(&INFO, found_max, sizeof(struct user_info)) != 0) return 1;
-  printf("Max Mustermann is of age %d lives in %s at ZIP %d\n", found_max->age,
-         found_max->country, found_max->zip);
-
-  struct user_info* found_peter;
-  ok = cm_lookup(&map, (const uint8_t*)NAME2, (uint8_t**)&found_peter);
-  if (memcmp(&INFO2, found_peter, sizeof(struct user_info)) != 0) return 1;
-  printf("Peter Urs is of age %d lives in %s at ZIP %d\n", found_peter->age,
-         found_peter->country, found_peter->zip);
-
-  ok = cm_remove(&map, (const uint8_t*)NAME, NULL);
-  if (!ok) return 1;
-
-  struct user_info* found_max2;
-  ok = cm_lookup(&map, (const uint8_t*)NAME, (uint8_t**)&found_max2);
-  if (ok) return 1;
+  // Verify removal
+  if (!cm_lookup_(&map, remove, &count)) {
+    printf("'%s' no longer in map\n", remove);
+  }
 
   cm_drop(&map);
+  return 0;
 }

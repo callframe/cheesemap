@@ -96,7 +96,7 @@ bool cm_raw_new_with(struct cheesemap_raw* map, uintptr_t entry_size,
 void cm_raw_drop(struct cheesemap_raw* map, uintptr_t entry_size);
 bool cm_raw_reserve(struct cheesemap_raw* map, cm_hash_fn hash, uint8_t* user,
                     uintptr_t entry_size, uintptr_t additional);
-bool cm_raw_lookup(struct cheesemap_raw* map, cm_hash_fn hash,
+bool cm_raw_lookup(const struct cheesemap_raw* map, cm_hash_fn hash,
                    cm_compare_fn compare, uint8_t* user, uintptr_t entry_size,
                    uintptr_t value_offset, const uint8_t* key,
                    uint8_t** out_value);
@@ -127,9 +127,27 @@ void cm_new(struct cheesemap* map, uintptr_t key_size, uintptr_t key_align,
             cm_hash_fn hash, cm_compare_fn compare);
 void cm_drop(struct cheesemap* map);
 bool cm_insert(struct cheesemap* map, const uint8_t* key, const uint8_t* value);
-bool cm_lookup(struct cheesemap* map, const uint8_t* key, uint8_t** out_value);
+bool cm_lookup(const struct cheesemap* map, const uint8_t* key,
+               uint8_t** out_value);
 bool cm_remove(struct cheesemap* map, const uint8_t* key, uint8_t* out_value);
 bool cm_reserve(struct cheesemap* map, uintptr_t additional);
+
+////////////////////////////////
+// cheesemap convenience macros
+//
+
+#define cm_new_(map, K, V, user, hash_fn, cmp_fn)                            \
+  cm_new(map, sizeof(K), _Alignof(K), sizeof(V), _Alignof(V), user, hash_fn, \
+         cmp_fn)
+
+#define cm_lookup_(map, key, out_val) \
+  cm_lookup(map, (const uint8_t*)&(key), (uint8_t**)(out_val))
+
+#define cm_insert_(map, key, val) \
+  cm_insert(map, (const uint8_t*)&(key), (const uint8_t*)&(val))
+
+#define cm_remove_(map, key, out_val) \
+  cm_remove(map, (const uint8_t*)&(key), (uint8_t*)(out_val))
 
 ////////////////////////////////
 // cheesemap iterators

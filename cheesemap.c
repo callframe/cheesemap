@@ -351,7 +351,7 @@ bool cm_raw_reserve(struct cheesemap_raw* map, cm_hash_fn hash, uint8_t* user,
   return cm_raw_resize(map, hash, user, entry_size, new_capacity);
 }
 
-bool cm_raw_lookup(struct cheesemap_raw* map, cm_hash_fn hash,
+bool cm_raw_lookup(const struct cheesemap_raw* map, cm_hash_fn hash,
                    cm_compare_fn compare, uint8_t* user, uintptr_t entry_size,
                    uintptr_t value_offset, const uint8_t* key,
                    uint8_t** out_value) {
@@ -471,7 +471,8 @@ bool cm_insert(struct cheesemap* map, const uint8_t* key,
                        value);
 }
 
-bool cm_lookup(struct cheesemap* map, const uint8_t* key, uint8_t** out_value) {
+bool cm_lookup(const struct cheesemap* map, const uint8_t* key,
+               uint8_t** out_value) {
   assert(map != NULL);
   assert(key != NULL && out_value != NULL);
 

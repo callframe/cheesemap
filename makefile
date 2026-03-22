@@ -1,3 +1,5 @@
+.SUFFIXES:
+
 CM_OPT_RELEASE ?= 0
 CM_OPT_CC_FLAGS ?=
 CM_OPT_ASSERT_PATH ?= <assert.h>
