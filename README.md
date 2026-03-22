@@ -1,3 +1,4 @@
+```
 Cheesemap
 ====
 
@@ -6,7 +7,7 @@ The HashMap might be a little memory efficient especially right after resizes an
 is not yet production tested but fully working.
 
 * Example
-```
+
 #include <stdio.h>
 #include <string.h>
 #include "cheesemap.h"
