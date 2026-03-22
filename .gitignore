@@ -3,3 +3,4 @@
 *.json
 .cache/
 /cm-demo
+/cm-bench

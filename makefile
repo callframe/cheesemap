@@ -4,6 +4,7 @@ CM_OPT_RELEASE ?= 0
 CM_OPT_CC_FLAGS ?=
 CM_OPT_ASSERT_PATH ?= <assert.h>
 CM_OPT_ENABLE_DEMO ?= 1
+CM_OPT_ENABLE_BENCH ?= 1
 CM_OPT_ENABLE_UBSAN ?= 0
 CM_OPT_ENABLE_ASAN ?= 0
 
@@ -18,6 +19,10 @@ CM_DEPEND := $(CM_SOURCE:.c=.d)
 CM_DEMO_SOURCE := $(CM_DIR)/cm-demo.c
 CM_DEMO := $(CM_DEMO_SOURCE:.c=)
 CM_DEMO_DEPEND := $(CM_DEMO_SOURCE:.c=.d)
+
+CM_BENCH_SOURCE := $(CM_DIR)/cm-bench.c
+CM_BENCH := $(CM_BENCH_SOURCE:.c=)
+CM_BENCH_DEPEND := $(CM_BENCH_SOURCE:.c=.d)
 
 CM_CC_FLAGS := \
 	-Wall -Wextra -Werror \
@@ -54,11 +59,22 @@ $(CM_DEMO): $(CM_DEMO_SOURCE) $(CM_OBJECT)
 	$(CC) $(CM_CC_FLAGS) $^ -o $@
 endif
 
+ifeq ($(CM_OPT_ENABLE_BENCH),1)
+.PHONY: all
+all:: $(CM_BENCH)
+
+$(CM_BENCH): $(CM_BENCH_SOURCE) $(CM_OBJECT)
+	$(CC) $(CM_CC_FLAGS) $^ -o $@
+endif
+
 .PHONY: clean
 clean::
 	$(RM) $(CM_OBJECT) $(CM_DEPEND)
 ifeq ($(CM_OPT_ENABLE_DEMO),1)
 	$(RM) $(CM_DEMO) $(CM_DEMO_DEPEND)
 endif
+ifeq ($(CM_OPT_ENABLE_BENCH),1)
+	$(RM) $(CM_BENCH) $(CM_BENCH_DEPEND)
+endif
 
--include $(CM_DEPEND) $(CM_DEMO_DEPEND)
+-include $(CM_DEPEND) $(CM_DEMO_DEPEND) $(CM_BENCH_DEPEND)
