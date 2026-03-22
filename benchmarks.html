@@ -1,0 +1,105 @@
+
+<style>
+.ctrl { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:1rem; }
+.ctrl button { font-size:12px; padding:4px 10px; cursor:pointer; border-radius:6px; border:0.5px solid #aaa; background:transparent; color:inherit; }
+.ctrl button.active { background:#3266ad; color:#fff; border-color:#3266ad; }
+.note { font-size:11px; color:#888; margin-top:6px; }
+</style>
+
+<div class="ctrl">
+  <button class="active" onclick="setOp('randInsert')">Random insert</button>
+  <button onclick="setOp('randLookup')">Random lookup</button>
+  <button onclick="setOp('randRemove')">Random remove</button>
+  <button onclick="setOp('seqInsert')">Seq insert</button>
+  <button onclick="setOp('seqLookup')">Seq lookup</button>
+  <button onclick="setOp('seqRemove')">Seq remove</button>
+</div>
+
+<div style="display:flex; flex-wrap:wrap; gap:16px; margin-bottom:8px; font-size:12px; color:#888;">
+  <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#3266ad"></span>cheesemap</span>
+  <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#993c1d"></span>C++ STL</span>
+  <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#0f6e56"></span>Rust</span>
+  <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#854f0b"></span>Go</span>
+  <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#534ab7"></span>Java</span>
+  <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#888780"></span>Deno</span>
+  <span style="display:flex;align-items:center;gap:4px;"><span style="width:10px;height:10px;border-radius:2px;background:#d4537e"></span>Python</span>
+</div>
+
+<div style="position:relative;width:100%;height:320px;">
+  <canvas id="mainChart"></canvas>
+</div>
+<div class="note" id="noteEl"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const data = {
+  randInsert:  { cheese:[24.54,18.65,36.76], cpp:[15.66,29.14,74.80], rust:[24.06,23.30,64.34], go:[40.67,32.75,68.71], java:[76.31,77.49,93.19], deno:[null,62.19,null], python:[68.02,88.20,168.35] },
+  randLookup:  { cheese:[9.68,34.45,44.32],  cpp:[3.91,15.90,21.26],  rust:[12.10,49.38,75.45], go:[13.08,28.84,38.34], java:[19.80,34.01,75.73], deno:[null,73.45,null], python:[114.87,334.18,465.23] },
+  randRemove:  { cheese:[17.54,35.54,50.65], cpp:[37.36,125.98,204.48],rust:[21.62,61.61,94.52], go:[45.86,48.50,109.73],java:[47.06,43.63,82.69], deno:[null,80.45,null], python:[98.94,339.79,502.76] },
+  seqInsert:   { cheese:[25.76,19.87,34.35], cpp:[35.46,19.03,18.23], rust:[24.63,24.17,62.81], go:[28.31,44.80,71.35], java:[96.96,38.17,26.82], deno:[null,55.53,null], python:[69.65,61.91,61.01] },
+  seqLookup:   { cheese:[23.51,30.36,44.34], cpp:[2.28,2.91,2.82],    rust:[19.63,45.91,76.82], go:[17.81,26.28,37.35], java:[24.11,7.95,12.83],  deno:[null,40.59,null], python:[55.43,60.18,62.44] },
+  seqRemove:   { cheese:[17.01,38.44,49.11], cpp:[12.77,11.55,12.87], rust:[20.84,55.80,97.98], go:[20.12,46.57,119.18],java:[34.58,7.43,20.43],  deno:[null,73.83,null], python:[47.98,52.83,64.28] },
+};
+
+const notes = {
+  randInsert: '',
+  randLookup: '',
+  randRemove: '',
+  seqInsert:  '',
+  seqLookup:  '* C++ STL and Java sequential lookup are prefetcher artifacts — sequential integer keys walk memory linearly, not representative of real workloads.',
+  seqRemove:  '* C++ STL sequential remove similarly benefits from warm cache state.',
+};
+
+const colors = {
+  cheese: '#3266ad', cpp: '#993c1d', rust: '#0f6e56',
+  go: '#854f0b', java: '#534ab7', deno: '#888780', python: '#d4537e'
+};
+const labels = { cheese:'cheesemap', cpp:'C++ STL', rust:'Rust', go:'Go', java:'Java', deno:'Deno', python:'Python' };
+const sizes = ['100K', '1M', '10M'];
+
+let chart;
+
+function buildDatasets(op) {
+  const d = data[op];
+  return Object.keys(d).map(lang => ({
+    label: labels[lang],
+    data: d[lang],
+    backgroundColor: colors[lang],
+    borderRadius: 3,
+    skipNull: true,
+  }));
+}
+
+function setOp(op) {
+  document.querySelectorAll('.ctrl button').forEach(b => b.classList.remove('active'));
+  event.target.classList.add('active');
+  chart.data.datasets = buildDatasets(op);
+  chart.update();
+  document.getElementById('noteEl').textContent = notes[op] || '';
+}
+
+chart = new Chart(document.getElementById('mainChart'), {
+  type: 'bar',
+  data: { labels: sizes, datasets: buildDatasets('randInsert') },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        callbacks: {
+          label: ctx => ctx.raw == null ? null : ` ${ctx.dataset.label}: ${ctx.raw.toFixed(1)} ns`
+        }
+      }
+    },
+    scales: {
+      y: {
+        title: { display: true, text: 'ns / op  (lower is better)', color: '#888', font: { size: 11 } },
+        grid: { color: 'rgba(128,128,128,0.1)' },
+        ticks: { color: '#888' }
+      },
+      x: { grid: { display: false }, ticks: { color: '#888' } }
+    }
+  }
+});
+</script>
