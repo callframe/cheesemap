@@ -10,6 +10,7 @@ is not yet production tested but fully working.
 
 #include <stdio.h>
 #include <string.h>
+
 #include "cheesemap.h"
 
 // Convenience macro for array length
@@ -21,8 +22,7 @@ uint64_t hash_string(const uint8_t* key, uint8_t* user) {
   const char* str = *(const char**)key;
   uint64_t hash = 5381;
   int c;
-  while ((c = *str++))
-    hash = ((hash << 5) + hash) + c; // hash * 33 + c
+  while ((c = *str++)) hash = ((hash << 5) + hash) + c;  // hash * 33 + c
   return hash;
 }
 
@@ -38,7 +38,8 @@ int main(void) {
   cm_new_(&map, const char*, int, NULL, hash_string, compare_string);
 
   // Count word frequencies
-  const char* words[] = {"hello", "world", "hello", "cheesemap", "world", "hello"};
+  const char* words[] = {"hello",     "world", "hello",
+                         "cheesemap", "world", "hello"};
   for (size_t i = 0; i < countof(words); i++) {
     int* count;
     if (cm_lookup_(&map, words[i], &count)) {
@@ -55,7 +56,7 @@ int main(void) {
   cm_iter_init(&iter, &map);
   const char** word;
   int* count;
-  while (cm_iter_next(&iter, &map, (uint8_t**)&word, (uint8_t**)&count)) {
+  while (cm_iter_next_(&iter, &map, &word, &count)) {
     printf("  %s: %d\n", *word, *count);
   }
 
@@ -79,3 +80,5 @@ int main(void) {
   return 0;
 }
 ```
+
+Copyright © 2026 Fabrice
