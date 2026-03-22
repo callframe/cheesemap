@@ -289,7 +289,7 @@ static void cm_raw_rehash(struct cheesemap_raw* old_map,
   cm_raw_iter_init(&iter, old_map, entry_size, 0);
 
   uintptr_t index;
-  while (cheesemap_raw_iter_next(&iter, entry_size, &index)) {
+  while (cm_raw_iter_next(&iter, entry_size, &index)) {
     uint8_t* elem = cm_raw_elem_at(old_map, index, entry_size);
     cm_hash_t h = hash(elem, user);
 
@@ -544,7 +544,7 @@ static inline uintptr_t cm_raw_iter_next_inner_fast(
   return iter->curr_index + bucket_offset;
 }
 
-bool cheesemap_raw_iter_next(struct cheesemap_raw_iter* iter,
+bool cm_raw_iter_next(struct cheesemap_raw_iter* iter,
                              uintptr_t entry_size, uintptr_t* out_index) {
   assert(iter != NULL);
   assert(out_index != NULL);
@@ -576,7 +576,7 @@ bool cm_iter_next(struct cheesemap_iter* iter, const struct cheesemap* map,
   assert(out_key != NULL && out_value != NULL);
 
   uintptr_t index;
-  if (!cheesemap_raw_iter_next(&iter->raw, iter->key_size + iter->value_size,
+  if (!cm_raw_iter_next(&iter->raw, iter->key_size + iter->value_size,
                                &index))
     return false;
 
