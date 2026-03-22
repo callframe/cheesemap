@@ -140,8 +140,7 @@ void cm_new(struct cheesemap* map, uintptr_t key_size, uintptr_t value_size,
             uint8_t* mem_usr, cm_malloc_fn malloc, cm_free_fn free,
             uint8_t* map_usr, cm_hash_fn hash, cm_compare_fn compare);
 void cm_drop(struct cheesemap* map);
-bool cm_insert(struct cheesemap* map, const uint8_t* key,
-               const uint8_t* value);
+bool cm_insert(struct cheesemap* map, const uint8_t* key, const uint8_t* value);
 bool cm_lookup(struct cheesemap* map, const uint8_t* key, uint8_t** out_value);
 bool cm_remove(struct cheesemap* map, const uint8_t* key, uint8_t* out_value);
 bool cm_reserve(struct cheesemap* map, uintptr_t additional);
