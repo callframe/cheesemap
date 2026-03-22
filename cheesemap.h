@@ -12,7 +12,6 @@ extern "C" {
 #include <limits.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <string.h>
 
 #include CM_OPT_ASSERT_PATH
 #ifndef assert
