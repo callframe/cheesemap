@@ -5,6 +5,7 @@ CM_OPT_ASSERT_PATH ?= <assert.h>
 CM_OPT_RELEASE ?= 1
 CM_OPT_ENABLE_UBSAN ?= 0
 CM_OPT_ENABLE_ASAN ?= 0
+CM_OPT_ENABLE_SSE2 ?= 0
 
 CC ?= gcc
 
@@ -37,6 +38,10 @@ endif
 
 ifeq ($(CM_OPT_ENABLE_ASAN),1)
 	CM_CC_FLAGS += -fsanitize=address
+endif
+
+ifeq ($(CM_OPT_ENABLE_SSE2),1)
+	CM_CC_FLAGS += -DCM_SSE2=1
 endif
 
 .PHONY: all

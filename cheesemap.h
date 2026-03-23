@@ -13,14 +13,20 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 
-#include CM_OPT_ASSERT_PATH
-#ifndef assert
-#error "assert is not defined"
+#ifdef CM_SSE2
+#include <emmintrin.h>
+
+typedef __m128i group_t;
+typedef uint16_t bitmask_t;
+#define CM_GROUP_SIZE 16
+#define CM_NO_FALLBACK
 #endif
 
+#ifndef CM_NO_FALLBACK
 typedef uintptr_t group_t;
 typedef group_t bitmask_t;
 #define CM_GROUP_SIZE __SIZEOF_POINTER__
+#endif
 
 ////////////////////////////////
 // cheesemap callback functions
@@ -62,15 +68,6 @@ enum {
   CM_WORD_WIDTH = sizeof(uintptr_t) * CHAR_BIT,
 
 };
-
-static inline uintptr_t cm_h1(cm_hash_t hash) {
-  return (uintptr_t)(hash >> CM_FP_SIZE);
-}
-
-static inline uint8_t cm_h2(cm_hash_t hash) {
-  uintptr_t top = hash >> (sizeof(cm_hash_t) * CHAR_BIT - CM_FP_SIZE);
-  return (uint8_t)(top & CM_H2_MASK);
-}
 
 extern const uint8_t CM_CTRL_STATIC_EMPTY[CM_GROUP_SIZE];
 

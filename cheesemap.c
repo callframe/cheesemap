@@ -6,6 +6,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include CM_OPT_ASSERT_PATH
+#ifndef assert
+#error "assert is not defined"
+#endif
+
 #define CM_ATTR(...) __attribute__((__VA_ARGS__))
 
 CM_ATTR(hot) static inline uintptr_t cm_ctz(uintptr_t val) {
@@ -34,7 +39,7 @@ CM_ATTR(hot) static inline uintptr_t cm_bitmask_lowest_set_bit(bitmask_t mask) {
 #if CM_GROUP_SIZE == 8
   return cm_ctz(mask) / CHAR_BIT;
 #elif CM_GROUP_SIZE == 16
-  return cm_ctz(mask)
+  return cm_ctz(mask);
 #else
 #error "unknown group size"
 #endif
@@ -105,7 +110,33 @@ static inline group_t cm_group_load(const uint8_t* ctrl);
 static inline bitmask_t cm_group_match_empty_or_deleted(group_t group);
 static inline bitmask_t cm_group_match_full(group_t group);
 
+/* sse2 implementation */
+#ifdef CM_SSE2
+static inline group_t cm_group_load(const uint8_t* ctrl) {
+  assert(ctrl != NULL);
+  return _mm_loadu_si128((const group_t*)ctrl);
+}
+
+static inline bitmask_t cm_group_match_tag(group_t group, uint8_t tag) {
+  __m128i cmp = _mm_cmpeq_epi8(group, _mm_set1_epi8(tag));
+  return _mm_movemask_epi8(cmp);
+}
+
+static inline bitmask_t cm_group_match_empty_or_deleted(group_t group) {
+  return _mm_movemask_epi8(group);
+}
+
+static inline bitmask_t cm_group_match_empty(group_t group) {
+  return cm_group_match_tag(group, CM_CTRL_EMPTY);
+}
+
+static inline bitmask_t cm_group_match_full(group_t group) {
+  return ~cm_group_match_empty_or_deleted(group);
+}
+#endif
+
 /* scalar implementation */
+#ifndef CM_NO_FALLBACK
 static inline group_t cm_group_repeat(uint8_t v) {
   return (group_t)v * (((group_t)-1) / (uint8_t)~0);
 }
@@ -136,8 +167,19 @@ static inline bitmask_t cm_group_match_tag(group_t group, uint8_t tag) {
   return (cmp - cm_group_repeat(CM_CTRL_END)) & ~cmp &
          cm_group_repeat(CM_CTRL_DELETED);
 }
+#endif
 
-/* static ctrl's */
+/* ctrl's n stuff */
+
+static inline uintptr_t cm_h1(cm_hash_t hash) {
+  return (uintptr_t)(hash >> CM_FP_SIZE);
+}
+
+static inline uint8_t cm_h2(cm_hash_t hash) {
+  uintptr_t top = hash >> (sizeof(cm_hash_t) * CHAR_BIT - CM_FP_SIZE);
+  return (uint8_t)(top & CM_H2_MASK);
+}
+
 const uint8_t CM_CTRL_STATIC_EMPTY[CM_GROUP_SIZE] = {[0 ... CM_GROUP_SIZE - 1] =
                                                          CM_CTRL_EMPTY};
 
