@@ -108,7 +108,7 @@ static inline bitmask_t cm_group_match_empty(group_t group);
 static inline bitmask_t cm_group_match_full(group_t group);
 
 /* sse2 implementation */
-#ifdef CM_SSE2
+#ifdef CM_OPT_ENABLE_SSE2
 static inline group_t cm_group_load(const uint8_t* ctrl) {
   cm_assert(ctrl != NULL);
   return _mm_loadu_si128((const group_t*)ctrl);
