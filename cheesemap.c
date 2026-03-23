@@ -107,7 +107,9 @@ static inline bool cm_ctrl_is_empty(uint8_t v) {
 
 /* group ops */
 static inline group_t cm_group_load(const uint8_t* ctrl);
+static inline bitmask_t cm_group_match_tag(group_t group, uint8_t tag);
 static inline bitmask_t cm_group_match_empty_or_deleted(group_t group);
+static inline bitmask_t cm_group_match_empty(group_t group);
 static inline bitmask_t cm_group_match_full(group_t group);
 
 /* sse2 implementation */
