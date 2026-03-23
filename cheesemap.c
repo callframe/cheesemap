@@ -118,7 +118,8 @@ static inline group_t cm_group_load(const uint8_t* ctrl) {
 }
 
 static inline bitmask_t cm_group_match_tag(group_t group, uint8_t tag) {
-  __m128i cmp = _mm_cmpeq_epi8(group, _mm_set1_epi8(tag));
+  const __m128i tagvec = _mm_set1_epi8(tag);
+  __m128i cmp = _mm_cmpeq_epi8(group, tagvec);
   return _mm_movemask_epi8(cmp);
 }
 
