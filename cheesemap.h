@@ -1,5 +1,5 @@
-#ifndef CHEESEMAP
-#define CHEESEMAP
+#ifndef CHEESEMAP_
+#define CHEESEMAP_
 
 #ifdef __cplusplus
 extern "C" {
