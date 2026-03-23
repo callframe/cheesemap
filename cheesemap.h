@@ -13,7 +13,16 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 
-#ifdef CM_SSE2
+_Noreturn void CM_OPT_PANIC_NAME(const char* file, uint32_t line,
+                                 const char* fmt, ...);
+
+#define cm_assert(cond)                                                        \
+  do {                                                                         \
+    if (!(cond))                                                               \
+      CM_OPT_PANIC_NAME(__FILE__, __LINE__, "cm_assertion failed: %s", #cond); \
+  } while (0)
+
+#ifdef CM_OPT_ENABLE_SSE2
 #include <emmintrin.h>
 
 typedef __m128i group_t;

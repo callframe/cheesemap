@@ -8,10 +8,23 @@ is not yet production tested but fully working.
 
 * Example
 
+#include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "cheesemap.h"
+
+_Noreturn void panic_impl(const char* file, uint32_t line, const char* fmt,
+                          ...) {
+  fprintf(stderr, "Panic at %s:%u: ", file, line);
+  va_list args;
+  va_start(args, fmt);
+  vfprintf(stderr, fmt, args);
+  va_end(args);
+  fprintf(stderr, "\n");
+  abort();
+}
 
 // Convenience macro for array length
 #define countof(arr) (sizeof(arr) / sizeof(*(arr)))
@@ -79,6 +92,7 @@ int main(void) {
   cm_drop(&map);
   return 0;
 }
-```
 
 Copyright © 2026 Fabrice
+```
+
