@@ -41,7 +41,7 @@ ifeq ($(CM_OPT_ENABLE_ASAN),1)
 endif
 
 ifeq ($(CM_OPT_ENABLE_SSE2),1)
-	CM_CC_FLAGS += -DCM_SSE2=1
+	CM_CC_FLAGS += -DCM_SSE2=1 -msse2
 endif
 
 .PHONY: all
