@@ -6,9 +6,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-static inline uintptr_t cm_ctz(uintptr_t val) {
+#define CM_ATTR(...) __attribute__((__VA_ARGS__))
+
+CM_ATTR(hot) static inline uintptr_t cm_ctz(uintptr_t val) {
   assert(val != 0);
-#if defined(__GNUC__) || defined(__clang__)
 #if UINTPTR_MAX == UINT64_MAX
   return (uintptr_t)__builtin_ctzll(val);
 #elif UINTPTR_MAX == UINT32_MAX
@@ -16,14 +17,10 @@ static inline uintptr_t cm_ctz(uintptr_t val) {
 #else
 #error "unknown word width"
 #endif
-#else
-#error "ctz not implemented"
-#endif
 }
 
-static inline uintptr_t cm_clz(uintptr_t val) {
+CM_ATTR(hot) static inline uintptr_t cm_clz(uintptr_t val) {
   assert(val != 0);
-#if defined(__GNUC__) || defined(__clang__)
 #if UINTPTR_MAX == UINT64_MAX
   return (uintptr_t)__builtin_clzll(val);
 #elif UINTPTR_MAX == UINT32_MAX
@@ -31,23 +28,38 @@ static inline uintptr_t cm_clz(uintptr_t val) {
 #else
 #error "unknown word width"
 #endif
+}
+
+CM_ATTR(hot) static inline uintptr_t cm_bitmask_lowest_set_bit(bitmask_t mask) {
+#if CM_GROUP_SIZE == 8
+  return cm_ctz(mask) / CHAR_BIT;
+#elif CM_GROUP_SIZE == 16
+  return cm_ctz(mask)
 #else
-#error "clz not implemented"
+#error "unknown group size"
 #endif
 }
 
-static inline uintptr_t cm_bitmask_lowest_set_bit(bitmask_t mask) {
+CM_ATTR(hot) static inline uintptr_t cm_bitmask_ctz(bitmask_t mask) {
+  if (mask == 0) return CM_GROUP_SIZE;
+#if CM_GROUP_SIZE == 8
   return cm_ctz(mask) / CHAR_BIT;
+#elif CM_GROUP_SIZE == 16
+  return cm_ctz(mask);
+#else
+#error "unknown group size"
+#endif
 }
 
-static inline uintptr_t cm_bitmask_ctz(bitmask_t mask) {
-  if (mask == 0) return sizeof(mask) * CHAR_BIT / CHAR_BIT;
-  return cm_ctz(mask) / CHAR_BIT;
-}
-
-static inline uintptr_t cm_bitmask_clz(bitmask_t mask) {
-  if (mask == 0) return sizeof(mask) * CHAR_BIT / CHAR_BIT;
+CM_ATTR(hot) static inline uintptr_t cm_bitmask_clz(bitmask_t mask) {
+  if (mask == 0) return CM_GROUP_SIZE;
+#if CM_GROUP_SIZE == 8
   return cm_clz(mask) / CHAR_BIT;
+#elif CM_GROUP_SIZE == 16
+  return cm_clz(mask);
+#else
+#error "unknown group size"
+#endif
 }
 
 #define cm_max(x, y) x > y ? x : y

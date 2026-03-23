@@ -20,10 +20,7 @@ extern "C" {
 
 typedef uintptr_t group_t;
 typedef group_t bitmask_t;
-
-enum {
-  CM_GROUP_SIZE = sizeof(group_t),
-};
+#define CM_GROUP_SIZE __SIZEOF_POINTER__
 
 ////////////////////////////////
 // cheesemap callback functions
