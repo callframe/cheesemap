@@ -6,6 +6,7 @@ CM_OPT_RELEASE ?= 1
 CM_OPT_ENABLE_UBSAN ?= 0
 CM_OPT_ENABLE_ASAN ?= 0
 CM_OPT_ENABLE_SSE2 ?= 0
+CM_OPT_STANDALONE ?= 1
 
 CC ?= gcc
 
@@ -44,8 +45,10 @@ ifeq ($(CM_OPT_ENABLE_SSE2),1)
 	CM_CC_FLAGS += -DCM_SSE2=1 -msse2
 endif
 
+ifeq ($(CM_OPT_STANDALONE),1)
 .PHONY: all
 all: $(CM_OBJECT) $(CM_DEMO)
+endif
 
 $(CM_OBJECT): $(CM_SOURCE)
 	$(CC) $(CM_CC_FLAGS) -c $< -o $@
@@ -54,7 +57,7 @@ $(CM_DEMO): $(CM_DEMO_SOURCE) $(CM_OBJECT)
 	$(CC) $(CM_CC_FLAGS) $^ -o $@
 
 .PHONY: clean
-clean:
+clean::
 	$(RM) $(CM_OBJECT) $(CM_DEPEND)
 	$(RM) $(CM_DEMO) $(CM_DEMO_DEPEND)
 
