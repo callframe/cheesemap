@@ -10,7 +10,7 @@ CM_OPT_STANDALONE ?= 1
 
 CC ?= gcc
 
-CM_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
+CM_DIR ?= $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
 
 CM_SOURCE := $(CM_DIR)/cheesemap.c
 CM_OBJECT := $(CM_SOURCE:.c=.o)
