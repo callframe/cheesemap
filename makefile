@@ -20,7 +20,7 @@ CM_DEMO_SOURCE := $(CM_DIR)/cm-demo.c
 CM_DEMO := $(CM_DEMO_SOURCE:.c=)
 CM_DEMO_DEPEND := $(CM_DEMO_SOURCE:.c=.d)
 
-CM_CC_FLAGS := \
+CM_CC_FLAGS := -std=gnu11 \
 	-Wall -Wextra -Werror \
 	-MMD -MP -I$(CM_DIR)
 
