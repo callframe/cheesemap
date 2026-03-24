@@ -62,8 +62,8 @@ CM_ATTR(hot) static inline uintptr_t cm_bitmask_clz(bitmask_t mask) {
 #endif
 }
 
-#define cm_max(x, y) x > y ? x : y
-#define cm_ispow2(x) (((x) & ((x) - 1)) == 0)
+#define cm_max(x, y) ((x) > (y) ? (x) : (y))
+#define cm_ispow2(x) ((x) != 0 && (((x) & ((x) - 1)) == 0))
 
 static inline uintptr_t cm_align_up(uintptr_t value, uintptr_t alignment) {
   cm_assert(cm_ispow2(alignment));
