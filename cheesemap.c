@@ -194,24 +194,25 @@ static inline uintptr_t cm_capacity_to_buckets(uintptr_t capacity) {
 }
 
 static inline uintptr_t cm_ctrl_offset(uintptr_t buckets,
-                                       uintptr_t entry_size) {
-  uintptr_t offset = entry_size * buckets;
+                                       const struct cm_type* type) {
+  uintptr_t offset = type->entry_size * buckets;
   return cm_align_up(offset, CM_GROUP_SIZE);
 }
 
 static inline uint8_t* cm_raw_elem_at(const struct cheesemap_raw* map,
-                                      uintptr_t index, uintptr_t entry_size) {
+                                      uintptr_t index,
+                                      const struct cm_type* type) {
   cm_assert(map != NULL);
   cm_assert(map->bucket_mask + 1 > index);
 
-  return map->ctrl - entry_size * (index + 1);
+  return map->ctrl - type->entry_size * (index + 1);
 }
 
 static inline uint8_t* cm_raw_origin(const struct cheesemap_raw* map,
-                                     uintptr_t entry_size) {
+                                     const struct cm_type* type) {
   cm_assert(map != NULL);
   uintptr_t buckets = map->bucket_mask + 1;
-  uintptr_t ctrl_offset = cm_ctrl_offset(buckets, entry_size);
+  uintptr_t ctrl_offset = cm_ctrl_offset(buckets, type);
   return map->ctrl - ctrl_offset;
 }
 
@@ -260,7 +261,7 @@ static uintptr_t cm_raw_find_insert_index(const struct cheesemap_raw* map,
 static bool cm_raw_find_in_group(const struct cheesemap_raw* map,
                                  cm_compare_fn compare, uint8_t* user,
                                  group_t group, const struct sequence* seq,
-                                 uint8_t h2, uintptr_t entry_size,
+                                 uint8_t h2, const struct cm_type* type,
                                  const uint8_t* key, uintptr_t* out_index) {
   cm_assert(map != NULL && compare != NULL);
   cm_assert(seq != NULL);
@@ -271,7 +272,7 @@ static bool cm_raw_find_in_group(const struct cheesemap_raw* map,
     uintptr_t bucket_offset = cm_bitmask_lowest_set_bit(mask);
     uintptr_t index = (seq->pos + bucket_offset) & map->bucket_mask;
 
-    uint8_t* elem = cm_raw_elem_at(map, index, entry_size);
+    uint8_t* elem = cm_raw_elem_at(map, index, type);
     if (compare(key, elem, user)) {
       *out_index = index;
       return true;
@@ -284,8 +285,9 @@ static bool cm_raw_find_in_group(const struct cheesemap_raw* map,
 }
 
 static bool cm_raw_find(const struct cheesemap_raw* map, cm_compare_fn compare,
-                        uint8_t* user, cm_hash_t hash, uintptr_t entry_size,
-                        const uint8_t* key, uintptr_t* out_index) {
+                        uint8_t* user, cm_hash_t hash,
+                        const struct cm_type* type, const uint8_t* key,
+                        uintptr_t* out_index) {
   cm_assert(map != NULL && compare != NULL);
   cm_assert(key != NULL && out_index != NULL);
 
@@ -296,8 +298,8 @@ static bool cm_raw_find(const struct cheesemap_raw* map, cm_compare_fn compare,
     uint8_t* ctrl = &map->ctrl[seq.pos];
     group_t group = cm_group_load(ctrl);
 
-    if (cm_raw_find_in_group(map, compare, user, group, &seq, h2, entry_size,
-                             key, out_index))
+    if (cm_raw_find_in_group(map, compare, user, group, &seq, h2, type, key,
+                             out_index))
       return true;
 
     if (cm_group_match_empty(group) != 0) return false;
@@ -307,10 +309,8 @@ static bool cm_raw_find(const struct cheesemap_raw* map, cm_compare_fn compare,
 }
 
 static void cm_raw_insert_at(struct cheesemap_raw* map, cm_hash_t hash,
-                             uintptr_t index, uintptr_t entry_size,
-                             uintptr_t key_size, uintptr_t value_offset,
-                             uintptr_t value_size, const uint8_t* key,
-                             const uint8_t* value) {
+                             uintptr_t index, const struct cm_type* type,
+                             const uint8_t* key, const uint8_t* value) {
   cm_assert(map != NULL);
   cm_assert(value != NULL);
 
@@ -318,32 +318,32 @@ static void cm_raw_insert_at(struct cheesemap_raw* map, cm_hash_t hash,
   map->growth_left -= cm_ctrl_is_empty(old_ctrl);
   cm_raw_ctrl_set(map, index, cm_h2(hash));
 
-  uint8_t* elem = cm_raw_elem_at(map, index, entry_size);
-  memcpy(elem, key, key_size);
-  memcpy(elem + value_offset, value, value_size);
+  uint8_t* elem = cm_raw_elem_at(map, index, type);
+  memcpy(elem, key, type->key_size);
+  memcpy(elem + type->value_offset, value, type->value_size);
 
   map->count += 1;
 }
 
 static void cm_raw_rehash(struct cheesemap_raw* old_map,
                           struct cheesemap_raw* new_map, cm_hash_fn hash,
-                          uint8_t* user, uintptr_t entry_size) {
+                          uint8_t* user, const struct cm_type* type) {
   cm_assert(old_map != NULL);
   cm_assert(new_map != NULL && hash != NULL);
 
   struct cheesemap_raw_iter iter;
-  cm_raw_iter_init(&iter, old_map, entry_size, 0);
+  cm_raw_iter_init(&iter, old_map, type, 0);
 
   uintptr_t index;
-  while (cm_raw_iter_next(&iter, entry_size, &index)) {
-    uint8_t* elem = cm_raw_elem_at(old_map, index, entry_size);
+  while (cm_raw_iter_next(&iter, type, &index)) {
+    uint8_t* elem = cm_raw_elem_at(old_map, index, type);
     cm_hash_t h = hash(elem, user);
 
     uintptr_t new_index = cm_raw_find_insert_index(new_map, h);
     cm_raw_ctrl_set(new_map, new_index, cm_h2(h));
 
-    uint8_t* new_elem = cm_raw_elem_at(new_map, new_index, entry_size);
-    memcpy(new_elem, elem, entry_size);
+    uint8_t* new_elem = cm_raw_elem_at(new_map, new_index, type);
+    memcpy(new_elem, elem, type->entry_size);
   }
 
   new_map->count = old_map->count;
@@ -353,32 +353,31 @@ static void cm_raw_rehash(struct cheesemap_raw* old_map,
 
 static bool cm_raw_resize(struct cheesemap_raw* map, cm_hash_fn hash,
                           cm_alloc_fn alloc, cm_dealloc_fn dealloc,
-                          uint8_t* user, uintptr_t entry_size,
+                          uint8_t* user, const struct cm_type* type,
                           uintptr_t new_capacity) {
   cm_assert(map != NULL && hash != NULL);
   cm_assert(alloc != NULL && dealloc != NULL);
 
   struct cheesemap_raw new_map;
-  bool success =
-      cm_raw_new_with(&new_map, alloc, user, entry_size, new_capacity);
+  bool success = cm_raw_new_with(&new_map, alloc, user, type, new_capacity);
   if (!success) return false;
 
-  cm_raw_rehash(map, &new_map, hash, user, entry_size);
+  cm_raw_rehash(map, &new_map, hash, user, type);
 
-  cm_raw_drop(map, dealloc, user, entry_size);
+  cm_raw_drop(map, dealloc, user, type);
   *map = new_map;
   return true;
 }
 
 bool cm_raw_new_with(struct cheesemap_raw* map, cm_alloc_fn alloc,
-                     uint8_t* user, uintptr_t entry_size,
+                     uint8_t* user, const struct cm_type* type,
                      uintptr_t initial_capacity) {
   cm_assert(map != NULL);
   cm_assert(alloc != NULL);
   memset(map, 0, sizeof(*map));
 
   uintptr_t buckets = cm_capacity_to_buckets(initial_capacity);
-  uintptr_t ctrl_offset = cm_ctrl_offset(buckets, entry_size);
+  uintptr_t ctrl_offset = cm_ctrl_offset(buckets, type);
   uintptr_t size = ctrl_offset + buckets + CM_GROUP_SIZE;
 
   uint8_t* ptr = alloc(size, user);
@@ -397,7 +396,7 @@ bool cm_raw_new_with(struct cheesemap_raw* map, cm_alloc_fn alloc,
 
 bool cm_raw_reserve(struct cheesemap_raw* map, cm_hash_fn hash,
                     cm_alloc_fn alloc, cm_dealloc_fn dealloc, uint8_t* user,
-                    uintptr_t entry_size, uintptr_t additional) {
+                    const struct cm_type* type, uintptr_t additional) {
   cm_assert(map != NULL && hash != NULL);
   cm_assert(alloc != NULL && dealloc != NULL);
 
@@ -406,13 +405,12 @@ bool cm_raw_reserve(struct cheesemap_raw* map, cm_hash_fn hash,
   uintptr_t needed = map->count + additional;
   uintptr_t capacity = cm_buckets_to_capacity(map->bucket_mask);
   uintptr_t new_capacity = cm_max(needed, capacity + 1);
-  return cm_raw_resize(map, hash, alloc, dealloc, user, entry_size,
-                       new_capacity);
+  return cm_raw_resize(map, hash, alloc, dealloc, user, type, new_capacity);
 }
 
 bool cm_raw_lookup(const struct cheesemap_raw* map, cm_hash_fn hash,
-                   cm_compare_fn compare, uint8_t* user, uintptr_t entry_size,
-                   uintptr_t value_offset, const uint8_t* key,
+                   cm_compare_fn compare, uint8_t* user,
+                   const struct cm_type* type, const uint8_t* key,
                    uint8_t** out_value) {
   cm_assert(map != NULL && hash != NULL);
   cm_assert(key != NULL && out_value != NULL);
@@ -420,30 +418,28 @@ bool cm_raw_lookup(const struct cheesemap_raw* map, cm_hash_fn hash,
   cm_hash_t h = hash(key, user);
   uintptr_t index;
 
-  if (!cm_raw_find(map, compare, user, h, entry_size, key, &index))
-    return false;
+  if (!cm_raw_find(map, compare, user, h, type, key, &index)) return false;
 
-  uint8_t* elem = cm_raw_elem_at(map, index, entry_size);
-  *out_value = elem + value_offset;
+  uint8_t* elem = cm_raw_elem_at(map, index, type);
+  *out_value = elem + type->value_offset;
   return true;
 }
 
 bool cm_raw_remove(struct cheesemap_raw* map, cm_hash_fn hash,
-                   cm_compare_fn compare, uint8_t* user, uintptr_t entry_size,
-                   uintptr_t value_offset, uintptr_t value_size,
-                   const uint8_t* key, uint8_t* out_value) {
+                   cm_compare_fn compare, uint8_t* user,
+                   const struct cm_type* type, const uint8_t* key,
+                   uint8_t* out_value) {
   cm_assert(map != NULL && hash != NULL);
   cm_assert(key != NULL);
 
   cm_hash_t h = hash(key, user);
   uintptr_t index;
 
-  if (!cm_raw_find(map, compare, user, h, entry_size, key, &index))
-    return false;
+  if (!cm_raw_find(map, compare, user, h, type, key, &index)) return false;
 
   if (out_value != NULL) {
-    uint8_t* elem = cm_raw_elem_at(map, index, entry_size);
-    memcpy(out_value, elem + value_offset, value_size);
+    uint8_t* elem = cm_raw_elem_at(map, index, type);
+    memcpy(out_value, elem + type->value_offset, type->value_size);
   }
 
   uintptr_t index_before = (index - CM_GROUP_SIZE) & map->bucket_mask;
@@ -468,9 +464,8 @@ bool cm_raw_remove(struct cheesemap_raw* map, cm_hash_fn hash,
 
 bool cm_raw_insert(struct cheesemap_raw* map, cm_hash_fn hash,
                    cm_alloc_fn alloc, cm_dealloc_fn dealloc, uint8_t* user,
-                   uintptr_t entry_size, uintptr_t key_size,
-                   uintptr_t value_offset, uintptr_t value_size,
-                   const uint8_t* key, const uint8_t* value) {
+                   const struct cm_type* type, const uint8_t* key,
+                   const uint8_t* value) {
   cm_assert(map != NULL && hash != NULL);
   cm_assert(alloc != NULL && dealloc != NULL);
   cm_assert(key != NULL && value != NULL);
@@ -480,25 +475,23 @@ bool cm_raw_insert(struct cheesemap_raw* map, cm_hash_fn hash,
 
   uint8_t old_ctrl = map->ctrl[index];
   if (map->growth_left == 0 && cm_ctrl_is_empty(old_ctrl)) {
-    bool success =
-        cm_raw_reserve(map, hash, alloc, dealloc, user, entry_size, 1);
+    bool success = cm_raw_reserve(map, hash, alloc, dealloc, user, type, 1);
     if (!success) return success;
     index = cm_raw_find_insert_index(map, h);
   }
 
-  cm_raw_insert_at(map, h, index, entry_size, key_size, value_offset,
-                   value_size, key, value);
+  cm_raw_insert_at(map, h, index, type, key, value);
   return true;
 }
 
 void cm_raw_drop(struct cheesemap_raw* map, cm_dealloc_fn dealloc,
-                 uint8_t* user, uintptr_t entry_size) {
+                 uint8_t* user, const struct cm_type* type) {
   cm_assert(map != NULL);
   cm_assert(dealloc != NULL);
 
   if (map->ctrl == CM_CTRL_STATIC_EMPTY || map->ctrl == NULL) return;
 
-  uint8_t* origin = cm_raw_origin(map, entry_size);
+  uint8_t* origin = cm_raw_origin(map, type);
   dealloc(origin, user);
 
   *map = cm_raw_new();
@@ -516,15 +509,15 @@ void cm_new(struct cheesemap* map, uintptr_t key_size, uintptr_t key_align,
   uintptr_t max_align = cm_max(key_align, value_align);
   uintptr_t entry_size = cm_align_up(value_offset + value_size, max_align);
 
-  *map = (struct cheesemap){key_size, value_size,  value_offset, entry_size,
-                            user,     hash,        compare,      alloc,
-                            dealloc,  cm_raw_new()};
+  struct cm_type type =
+      cm_type_construct(key_size, value_size, value_offset, entry_size);
+  *map = cm_construct(type, user, hash, compare, alloc, dealloc, cm_raw_new());
 }
 
 void cm_drop(struct cheesemap* map) {
   cm_assert(map != NULL);
 
-  cm_raw_drop(&map->raw, map->dealloc, map->user, map->entry_size);
+  cm_raw_drop(&map->raw, map->dealloc, map->user, &map->type);
   memset(map, 0, sizeof(*map));
 }
 
@@ -534,8 +527,7 @@ bool cm_insert(struct cheesemap* map, const uint8_t* key,
   cm_assert(key != NULL && value != NULL);
 
   return cm_raw_insert(&map->raw, map->hash, map->alloc, map->dealloc,
-                       map->user, map->entry_size, map->key_size,
-                       map->value_offset, map->value_size, key, value);
+                       map->user, &map->type, key, value);
 }
 
 bool cm_lookup(const struct cheesemap* map, const uint8_t* key,
@@ -544,7 +536,7 @@ bool cm_lookup(const struct cheesemap* map, const uint8_t* key,
   cm_assert(key != NULL && out_value != NULL);
 
   return cm_raw_lookup(&map->raw, map->hash, map->compare, map->user,
-                       map->entry_size, map->value_offset, key, out_value);
+                       &map->type, key, out_value);
 }
 
 bool cm_remove(struct cheesemap* map, const uint8_t* key, uint8_t* out_value) {
@@ -552,26 +544,25 @@ bool cm_remove(struct cheesemap* map, const uint8_t* key, uint8_t* out_value) {
   cm_assert(key != NULL);
 
   return cm_raw_remove(&map->raw, map->hash, map->compare, map->user,
-                       map->entry_size, map->value_offset, map->value_size, key,
-                       out_value);
+                       &map->type, key, out_value);
 }
 
 bool cm_reserve(struct cheesemap* map, uintptr_t additional) {
   cm_assert(map != NULL);
 
   return cm_raw_reserve(&map->raw, map->hash, map->alloc, map->dealloc,
-                        map->user, map->entry_size, additional);
+                        map->user, &map->type, additional);
 }
 
 /* iterator */
 static inline uint8_t* cm_raw_iter_next_entry(uint8_t* old_entry,
-                                              uintptr_t entry_size) {
-  return old_entry - entry_size * CM_GROUP_SIZE;
+                                              const struct cm_type* type) {
+  return old_entry - type->entry_size * CM_GROUP_SIZE;
 }
 
 void cm_raw_iter_init(struct cheesemap_raw_iter* iter,
-                      const struct cheesemap_raw* map, uintptr_t entry_size,
-                      uintptr_t start_index) {
+                      const struct cheesemap_raw* map,
+                      const struct cm_type* type, uintptr_t start_index) {
   cm_assert(map != NULL);
   cm_assert(start_index % CM_GROUP_SIZE == 0);
   memset(iter, 0, sizeof(*iter));
@@ -580,7 +571,7 @@ void cm_raw_iter_init(struct cheesemap_raw_iter* iter,
   cm_assert(buckets > start_index);
 
   uint8_t* ctrl = &map->ctrl[start_index];
-  uint8_t* entry = cm_raw_elem_at(map, start_index, entry_size);
+  uint8_t* entry = cm_raw_elem_at(map, start_index, type);
 
   group_t group = cm_group_load(ctrl);
   bitmask_t mask = cm_group_match_full(group);
@@ -588,7 +579,7 @@ void cm_raw_iter_init(struct cheesemap_raw_iter* iter,
   iter->curr_mask = mask;
   iter->curr_index = start_index;
   iter->n_ctrl = ctrl + CM_GROUP_SIZE;
-  iter->n_entry = cm_raw_iter_next_entry(entry, entry_size);
+  iter->n_entry = cm_raw_iter_next_entry(entry, type);
   iter->end = map->ctrl + buckets;
 }
 
@@ -612,8 +603,8 @@ static inline uintptr_t cm_raw_iter_next_inner_fast(
   return iter->curr_index + bucket_offset;
 }
 
-bool cm_raw_iter_next(struct cheesemap_raw_iter* iter, uintptr_t entry_size,
-                      uintptr_t* out_index) {
+bool cm_raw_iter_next(struct cheesemap_raw_iter* iter,
+                      const struct cm_type* type, uintptr_t* out_index) {
   cm_assert(iter != NULL);
   cm_assert(out_index != NULL);
 
@@ -626,16 +617,16 @@ bool cm_raw_iter_next(struct cheesemap_raw_iter* iter, uintptr_t entry_size,
     if (iter->n_ctrl >= iter->end) return false;
 
     cm_raw_iter_next_inner_slow(iter);
-    iter->n_entry = cm_raw_iter_next_entry(iter->n_entry, entry_size);
+    iter->n_entry = cm_raw_iter_next_entry(iter->n_entry, type);
   }
 }
 
 void cm_iter_init(struct cheesemap_iter* iter, const struct cheesemap* map) {
   cm_assert(iter != NULL && map != NULL);
 
-  iter->entry_size = map->entry_size;
-  iter->value_offset = map->value_offset;
-  cm_raw_iter_init(&iter->raw, &map->raw, map->entry_size, 0);
+  iter->entry_size = map->type.entry_size;
+  iter->value_offset = map->type.value_offset;
+  cm_raw_iter_init(&iter->raw, &map->raw, &map->type, 0);
 }
 
 bool cm_iter_next(struct cheesemap_iter* iter, const struct cheesemap* map,
@@ -644,9 +635,9 @@ bool cm_iter_next(struct cheesemap_iter* iter, const struct cheesemap* map,
   cm_assert(out_key != NULL && out_value != NULL);
 
   uintptr_t index;
-  if (!cm_raw_iter_next(&iter->raw, iter->entry_size, &index)) return false;
+  if (!cm_raw_iter_next(&iter->raw, &map->type, &index)) return false;
 
-  uint8_t* elem = cm_raw_elem_at(&map->raw, index, iter->entry_size);
+  uint8_t* elem = cm_raw_elem_at(&map->raw, index, &map->type);
   *out_key = elem;
   *out_value = elem + iter->value_offset;
   return true;
