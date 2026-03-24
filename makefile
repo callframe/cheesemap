@@ -54,7 +54,7 @@ $(CM_OBJECT): $(CM_SOURCE)
 	$(CC) $(CM_CC_FLAGS) -c $< -o $@
 
 $(CM_DEMO): $(CM_DEMO_SOURCE) $(CM_OBJECT)
-	$(CC) $(CM_CC_FLAGS) $^ -o $@
+	$(CC) $(CM_CC_FLAGS) $(CM_DEMO_SOURCE) $(CM_OBJECT) -o $@
 
 .PHONY: clean
 clean::
