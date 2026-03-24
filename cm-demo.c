@@ -35,10 +35,23 @@ bool compare_string(const uint8_t* key1, const uint8_t* key2, uint8_t* user) {
   return strcmp(*(const char**)key1, *(const char**)key2) == 0;
 }
 
+// Default allocator (uses malloc)
+void* default_alloc(uintptr_t size, uint8_t* user) {
+  (void)user;
+  return malloc(size);
+}
+
+// Default deallocator (uses free)
+void default_dealloc(void* ptr, uint8_t* user) {
+  (void)user;
+  free(ptr);
+}
+
 int main(void) {
   // Create a map: string -> int (word frequency counter)
   struct cheesemap map;
-  cm_new_(&map, const char*, int, NULL, hash_string, compare_string);
+  cm_new_(&map, const char*, int, NULL, hash_string, compare_string,
+          default_alloc, default_dealloc);
 
   // Count word frequencies
   const char* words[] = {"hello",     "world", "hello",

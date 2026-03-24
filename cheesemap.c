@@ -3,7 +3,6 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 
 #define CM_ATTR(...) __attribute__((__VA_ARGS__))
@@ -353,31 +352,36 @@ static void cm_raw_rehash(struct cheesemap_raw* old_map,
 }
 
 static bool cm_raw_resize(struct cheesemap_raw* map, cm_hash_fn hash,
+                          cm_alloc_fn alloc, cm_dealloc_fn dealloc,
                           uint8_t* user, uintptr_t entry_size,
                           uintptr_t new_capacity) {
   cm_assert(map != NULL && hash != NULL);
+  cm_assert(alloc != NULL && dealloc != NULL);
 
   struct cheesemap_raw new_map;
-  bool success = cm_raw_new_with(&new_map, entry_size, new_capacity);
+  bool success =
+      cm_raw_new_with(&new_map, alloc, user, entry_size, new_capacity);
   if (!success) return false;
 
   cm_raw_rehash(map, &new_map, hash, user, entry_size);
 
-  cm_raw_drop(map, entry_size);
+  cm_raw_drop(map, dealloc, user, entry_size);
   *map = new_map;
   return true;
 }
 
-bool cm_raw_new_with(struct cheesemap_raw* map, uintptr_t entry_size,
+bool cm_raw_new_with(struct cheesemap_raw* map, cm_alloc_fn alloc,
+                     uint8_t* user, uintptr_t entry_size,
                      uintptr_t initial_capacity) {
   cm_assert(map != NULL);
+  cm_assert(alloc != NULL);
   memset(map, 0, sizeof(*map));
 
   uintptr_t buckets = cm_capacity_to_buckets(initial_capacity);
   uintptr_t ctrl_offset = cm_ctrl_offset(buckets, entry_size);
   uintptr_t size = ctrl_offset + buckets + CM_GROUP_SIZE;
 
-  uint8_t* ptr = malloc(size);
+  uint8_t* ptr = alloc(size, user);
   if (ptr == NULL) return false;
 
   uint8_t* ctrl = ptr + ctrl_offset;
@@ -391,16 +395,19 @@ bool cm_raw_new_with(struct cheesemap_raw* map, uintptr_t entry_size,
   return true;
 }
 
-bool cm_raw_reserve(struct cheesemap_raw* map, cm_hash_fn hash, uint8_t* user,
+bool cm_raw_reserve(struct cheesemap_raw* map, cm_hash_fn hash,
+                    cm_alloc_fn alloc, cm_dealloc_fn dealloc, uint8_t* user,
                     uintptr_t entry_size, uintptr_t additional) {
   cm_assert(map != NULL && hash != NULL);
+  cm_assert(alloc != NULL && dealloc != NULL);
 
   if (map->growth_left >= additional) return true;
   // TODO: inplace rehash
   uintptr_t needed = map->count + additional;
   uintptr_t capacity = cm_buckets_to_capacity(map->bucket_mask);
   uintptr_t new_capacity = cm_max(needed, capacity + 1);
-  return cm_raw_resize(map, hash, user, entry_size, new_capacity);
+  return cm_raw_resize(map, hash, alloc, dealloc, user, entry_size,
+                       new_capacity);
 }
 
 bool cm_raw_lookup(const struct cheesemap_raw* map, cm_hash_fn hash,
@@ -459,11 +466,13 @@ bool cm_raw_remove(struct cheesemap_raw* map, cm_hash_fn hash,
   return true;
 }
 
-bool cm_raw_insert(struct cheesemap_raw* map, cm_hash_fn hash, uint8_t* user,
+bool cm_raw_insert(struct cheesemap_raw* map, cm_hash_fn hash,
+                   cm_alloc_fn alloc, cm_dealloc_fn dealloc, uint8_t* user,
                    uintptr_t entry_size, uintptr_t key_size,
                    uintptr_t value_offset, uintptr_t value_size,
                    const uint8_t* key, const uint8_t* value) {
   cm_assert(map != NULL && hash != NULL);
+  cm_assert(alloc != NULL && dealloc != NULL);
   cm_assert(key != NULL && value != NULL);
 
   cm_hash_t h = hash(key, user);
@@ -471,7 +480,8 @@ bool cm_raw_insert(struct cheesemap_raw* map, cm_hash_fn hash, uint8_t* user,
 
   uint8_t old_ctrl = map->ctrl[index];
   if (map->growth_left == 0 && cm_ctrl_is_empty(old_ctrl)) {
-    bool success = cm_raw_reserve(map, hash, user, entry_size, 1);
+    bool success =
+        cm_raw_reserve(map, hash, alloc, dealloc, user, entry_size, 1);
     if (!success) return success;
     index = cm_raw_find_insert_index(map, h);
   }
@@ -481,35 +491,40 @@ bool cm_raw_insert(struct cheesemap_raw* map, cm_hash_fn hash, uint8_t* user,
   return true;
 }
 
-void cm_raw_drop(struct cheesemap_raw* map, uintptr_t entry_size) {
+void cm_raw_drop(struct cheesemap_raw* map, cm_dealloc_fn dealloc,
+                 uint8_t* user, uintptr_t entry_size) {
   cm_assert(map != NULL);
+  cm_assert(dealloc != NULL);
 
   if (map->ctrl == CM_CTRL_STATIC_EMPTY || map->ctrl == NULL) return;
 
   uint8_t* origin = cm_raw_origin(map, entry_size);
-  free(origin);
+  dealloc(origin, user);
 
   *map = cm_raw_new();
 }
 
 void cm_new(struct cheesemap* map, uintptr_t key_size, uintptr_t key_align,
             uintptr_t value_size, uintptr_t value_align, uint8_t* user,
-            cm_hash_fn hash, cm_compare_fn compare) {
+            cm_hash_fn hash, cm_compare_fn compare, cm_alloc_fn alloc,
+            cm_dealloc_fn dealloc) {
   cm_assert(map != NULL);
   cm_assert(hash != NULL && compare != NULL);
+  cm_assert(alloc != NULL && dealloc != NULL);
 
   uintptr_t value_offset = cm_align_up(key_size, value_align);
   uintptr_t max_align = cm_max(key_align, value_align);
   uintptr_t entry_size = cm_align_up(value_offset + value_size, max_align);
 
-  *map = (struct cheesemap){key_size, value_size, value_offset, entry_size,
-                            user,     hash,       compare,      cm_raw_new()};
+  *map = (struct cheesemap){key_size, value_size,  value_offset, entry_size,
+                            user,     hash,        compare,      alloc,
+                            dealloc,  cm_raw_new()};
 }
 
 void cm_drop(struct cheesemap* map) {
   cm_assert(map != NULL);
 
-  cm_raw_drop(&map->raw, map->entry_size);
+  cm_raw_drop(&map->raw, map->dealloc, map->user, map->entry_size);
   memset(map, 0, sizeof(*map));
 }
 
@@ -518,9 +533,9 @@ bool cm_insert(struct cheesemap* map, const uint8_t* key,
   cm_assert(map != NULL);
   cm_assert(key != NULL && value != NULL);
 
-  return cm_raw_insert(&map->raw, map->hash, map->user, map->entry_size,
-                       map->key_size, map->value_offset, map->value_size, key,
-                       value);
+  return cm_raw_insert(&map->raw, map->hash, map->alloc, map->dealloc,
+                       map->user, map->entry_size, map->key_size,
+                       map->value_offset, map->value_size, key, value);
 }
 
 bool cm_lookup(const struct cheesemap* map, const uint8_t* key,
@@ -544,8 +559,8 @@ bool cm_remove(struct cheesemap* map, const uint8_t* key, uint8_t* out_value) {
 bool cm_reserve(struct cheesemap* map, uintptr_t additional) {
   cm_assert(map != NULL);
 
-  return cm_raw_reserve(&map->raw, map->hash, map->user, map->entry_size,
-                        additional);
+  return cm_raw_reserve(&map->raw, map->hash, map->alloc, map->dealloc,
+                        map->user, map->entry_size, additional);
 }
 
 /* iterator */
