@@ -13,13 +13,13 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 
-_Noreturn void CM_OPT_PANIC_NAME(const char* file, uint32_t line,
-                                 const char* fmt, ...);
+_Noreturn void CM_PANIC_SYM(const char* file, uint32_t line, const char* fmt,
+                            ...);
 
-#define cm_assert(cond)                                                        \
-  do {                                                                         \
-    if (!(cond))                                                               \
-      CM_OPT_PANIC_NAME(__FILE__, __LINE__, "cm_assertion failed: %s", #cond); \
+#define cm_assert(cond)                                                   \
+  do {                                                                    \
+    if (!(cond))                                                          \
+      CM_PANIC_SYM(__FILE__, __LINE__, "cm_assertion failed: %s", #cond); \
   } while (0)
 
 #ifdef CM_OPT_ENABLE_SSE2
