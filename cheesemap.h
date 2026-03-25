@@ -16,11 +16,15 @@ extern "C" {
 _Noreturn void CM_PANIC_SYM(const char* file, uint32_t line, const char* fmt,
                             ...);
 
+#ifdef NDEBUG
+#define cm_assert(cond)
+#else
 #define cm_assert(cond)                                                   \
   do {                                                                    \
     if (!(cond))                                                          \
       CM_PANIC_SYM(__FILE__, __LINE__, "cm_assertion failed: %s", #cond); \
   } while (0)
+#endif
 
 #ifdef CM_ENABLE_SSE2
 #include <emmintrin.h>
