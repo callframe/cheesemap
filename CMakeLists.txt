@@ -63,4 +63,11 @@ add_if_enabled(cheesemap CM_ENABLE_UBSAN COMPILE_OPTIONS -fsanitize=undefined LI
 add_if_enabled(cheesemap CM_ENABLE_ASAN COMPILE_OPTIONS -fsanitize=address LINK_OPTIONS -fsanitize=address)
 add_if_enabled(cheesemap CM_ENABLE_SSE2 COMPILE_OPTIONS -msse2 DEFINITIONS CM_ENABLE_SSE2=1)
 
+## configuration summary
 
+message(STATUS "cheesemap configuration:")
+message(STATUS "  CM_PANIC_SYM: ${CM_PANIC_SYM}")
+message(STATUS "  CM_ENABLE_EXTENDED_DEBUG: ${CM_ENABLE_EXTENDED_DEBUG}")
+message(STATUS "  CM_ENABLE_UBSAN: ${CM_ENABLE_UBSAN}")
+message(STATUS "  CM_ENABLE_ASAN: ${CM_ENABLE_ASAN}")
+message(STATUS "  CM_ENABLE_SSE2: ${CM_ENABLE_SSE2}")
