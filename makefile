@@ -3,7 +3,7 @@
 
 # Build configuration options
 CM_OPT_CC_FLAGS ?=
-CM_OPT_PANIC_NAME ?= panic_impl
+CM_OPT_PANIC_SYM ?= panic_impl
 CM_OPT_RELEASE ?= 1
 CM_OPT_ENABLE_UBSAN ?= 0
 CM_OPT_ENABLE_ASAN ?= 0
@@ -27,7 +27,7 @@ cm_CFLAGS = -std=gnu11 \
 	-MMD -MP -I$(CM_DIR)
 
 cm_CFLAGS += $(CM_OPT_CC_FLAGS)
-cm_CFLAGS += -DCM_OPT_PANIC_NAME='$(CM_OPT_PANIC_NAME)'
+cm_CFLAGS += -DCM_PANIC_SYM='$(CM_OPT_PANIC_SYM)'
 
 ifeq ($(CM_OPT_RELEASE),1)
 	cm_CFLAGS += -O2 -fno-stack-protector
@@ -44,7 +44,7 @@ ifeq ($(CM_OPT_ENABLE_ASAN),1)
 endif
 
 ifeq ($(CM_OPT_ENABLE_SSE2),1)
-	cm_CFLAGS += -DCM_OPT_ENABLE_SSE2=1 -msse2
+	cm_CFLAGS += -DCM_ENABLE_SSE2=1 -msse2
 endif
 
 # Target: cm_demo

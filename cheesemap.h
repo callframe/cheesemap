@@ -22,7 +22,7 @@ _Noreturn void CM_PANIC_SYM(const char* file, uint32_t line, const char* fmt,
       CM_PANIC_SYM(__FILE__, __LINE__, "cm_assertion failed: %s", #cond); \
   } while (0)
 
-#ifdef CM_OPT_ENABLE_SSE2
+#ifdef CM_ENABLE_SSE2
 #include <emmintrin.h>
 
 typedef __m128i group_t;
