@@ -13,8 +13,7 @@ extern "C" {
 #include <stdbool.h>
 #include <stdint.h>
 
-_Noreturn void CM_PANIC_SYM(const char* file, uint32_t line, const char* fmt,
-                            ...);
+void CM_PANIC_SYM(const char* file, uint32_t line, const char* fmt, ...);
 
 #ifdef NDEBUG
 #define cm_assert(cond)

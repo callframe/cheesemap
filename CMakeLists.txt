@@ -21,47 +21,31 @@ option(CM_ENABLE_SSE2 "Whether to enable SSE2 usage" OFF)
 
 set(cheesemap_source "${CMAKE_CURRENT_SOURCE_DIR}/cheesemap.c")
 
-## helper functions
-
-function(add_if_enabled target option_name)
-  if(NOT DEFINED ${option_name} OR NOT ${option_name})
-    return()
-  endif()
-
-  cmake_parse_arguments(ARG "" "" "COMPILE_OPTIONS;LINK_OPTIONS;DEFINITIONS" ${ARGN})
-
-  if(ARG_COMPILE_OPTIONS)
-    target_compile_options(${target} PRIVATE ${ARG_COMPILE_OPTIONS})
-  endif()
-
-  if(ARG_LINK_OPTIONS)
-    target_link_options(${target} PRIVATE ${ARG_LINK_OPTIONS})
-  endif()
-
-  if(ARG_DEFINITIONS)
-    target_compile_definitions(${target} PRIVATE ${ARG_DEFINITIONS})
-  endif()
-endfunction()
-
 ## library target
 
 add_library(cheesemap OBJECT ${cheesemap_source})
+target_include_directories(cheesemap PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-target_compile_features(cheesemap PUBLIC c_std_11)
-set_target_properties(cheesemap PROPERTIES
-  C_STANDARD_REQUIRED ON
-  C_EXTENSIONS ON
-  POSITION_INDEPENDENT_CODE ON
+target_compile_definitions(cheesemap 
+  PRIVATE 
+    CM_PANIC_SYM=${CM_PANIC_SYM}
+    $<$<BOOL:${CM_ENABLE_EXTENDED_DEBUG}>:CM_ENABLE_EXTENDED_DEBUG=1>
+    $<$<BOOL:${CM_ENABLE_UBSAN}>:CM_ENABLE_UBSAN=1>
+    $<$<BOOL:${CM_ENABLE_ASAN}>:CM_ENABLE_ASAN=1>
+    $<$<BOOL:${CM_ENABLE_SSE2}>:CM_ENABLE_SSE2=1>
 )
 
-target_include_directories(cheesemap PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_definitions(cheesemap PRIVATE CM_PANIC_SYM=${CM_PANIC_SYM})
-target_compile_options(cheesemap PRIVATE -Wall -Wextra -Werror)
+target_compile_options(cheesemap 
+  PRIVATE 
+    -Wall -Wextra -Werror
+    -std=gnu11
+    -fPIC
 
-add_if_enabled(cheesemap CM_ENABLE_EXTENDED_DEBUG COMPILE_OPTIONS -g3)
-add_if_enabled(cheesemap CM_ENABLE_UBSAN COMPILE_OPTIONS -fsanitize=undefined LINK_OPTIONS -fsanitize=undefined)
-add_if_enabled(cheesemap CM_ENABLE_ASAN COMPILE_OPTIONS -fsanitize=address LINK_OPTIONS -fsanitize=address)
-add_if_enabled(cheesemap CM_ENABLE_SSE2 COMPILE_OPTIONS -msse2 DEFINITIONS CM_ENABLE_SSE2=1)
+    $<$<BOOL:${CM_ENABLE_EXTENDED_DEBUG}>:-g3>
+    $<$<BOOL:${CM_ENABLE_UBSAN}>:-fsanitize=undefined>
+    $<$<BOOL:${CM_ENABLE_ASAN}>:-fsanitize=address>
+    $<$<BOOL:${CM_ENABLE_SSE2}>:-msse2>
+)
 
 ## configuration summary
 
