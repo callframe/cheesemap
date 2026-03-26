@@ -19,12 +19,12 @@ option(CM_ENABLE_SSE2 "Whether to enable SSE2 usage" OFF)
 
 ## source
 
-set(cheesemap_source "${CMAKE_SOURCE_DIR}/cheesemap.c")
+set(cheesemap_source "${CMAKE_CURRENT_SOURCE_DIR}/cheesemap.c")
 
 ## helper functions
 
 function(add_if_enabled target option_name)
-  if(NOT ${option_name})
+  if(NOT DEFINED ${option_name} OR NOT ${option_name})
     return()
   endif()
 
@@ -47,14 +47,14 @@ endfunction()
 
 add_library(cheesemap OBJECT ${cheesemap_source})
 
+target_compile_features(cheesemap PUBLIC c_std_11)
 set_target_properties(cheesemap PROPERTIES
-  C_STANDARD 11
   C_STANDARD_REQUIRED ON
   C_EXTENSIONS ON
   POSITION_INDEPENDENT_CODE ON
 )
 
-target_include_directories(cheesemap PUBLIC ${CMAKE_SOURCE_DIR})
+target_include_directories(cheesemap PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_compile_definitions(cheesemap PRIVATE CM_PANIC_SYM=${CM_PANIC_SYM})
 target_compile_options(cheesemap PRIVATE -Wall -Wextra -Werror)
 
