@@ -351,9 +351,8 @@ static void cm_raw_rehash(struct cheesemap_raw* old_map,
 }
 
 static bool cm_raw_resize(struct cheesemap_raw* map, cm_hash_fn hash,
-                          cm_alloc_fn alloc, cm_dealloc_fn dealloc,
-                          cm_u8* user, const struct cm_type* type,
-                          cm_usize new_capacity) {
+                          cm_alloc_fn alloc, cm_dealloc_fn dealloc, cm_u8* user,
+                          const struct cm_type* type, cm_usize new_capacity) {
   cm_assert(map != NULL && hash != NULL);
   cm_assert(alloc != NULL && dealloc != NULL);
 
@@ -368,9 +367,8 @@ static bool cm_raw_resize(struct cheesemap_raw* map, cm_hash_fn hash,
   return true;
 }
 
-bool cm_raw_new_with(struct cheesemap_raw* map, cm_alloc_fn alloc,
-                     cm_u8* user, const struct cm_type* type,
-                     cm_usize initial_capacity) {
+bool cm_raw_new_with(struct cheesemap_raw* map, cm_alloc_fn alloc, cm_u8* user,
+                     const struct cm_type* type, cm_usize initial_capacity) {
   cm_assert(map != NULL);
   cm_assert(alloc != NULL);
   memset(map, 0, sizeof(*map));
@@ -450,8 +448,7 @@ bool cm_raw_remove(struct cheesemap_raw* map, cm_hash_fn hash,
 
   cm_usize empty_count =
       cm_bitmask_clz(empty_before) + cm_bitmask_ctz(empty_after);
-  cm_u8 ctrl =
-      (empty_count >= CM_GROUP_SIZE) ? CM_CTRL_DELETED : CM_CTRL_EMPTY;
+  cm_u8 ctrl = (empty_count >= CM_GROUP_SIZE) ? CM_CTRL_DELETED : CM_CTRL_EMPTY;
 
   if (ctrl == CM_CTRL_EMPTY) map->growth_left += 1;
 
@@ -483,8 +480,8 @@ bool cm_raw_insert(struct cheesemap_raw* map, cm_hash_fn hash,
   return true;
 }
 
-void cm_raw_drop(struct cheesemap_raw* map, cm_dealloc_fn dealloc,
-                 cm_u8* user, const struct cm_type* type) {
+void cm_raw_drop(struct cheesemap_raw* map, cm_dealloc_fn dealloc, cm_u8* user,
+                 const struct cm_type* type) {
   cm_assert(map != NULL);
   cm_assert(dealloc != NULL);
 
@@ -509,8 +506,8 @@ void cm_new(struct cheesemap* map, cm_usize key_size, cm_usize key_align,
   cm_usize entry_size = cm_align_up(value_offset + value_size, max_align);
 
   struct cm_type type =
-      cm_type_construct(key_size, value_size, value_offset, entry_size);
-  *map = cm_construct(type, user, hash, compare, alloc, dealloc, cm_raw_new());
+      cm_type_new(key_size, value_size, value_offset, entry_size);
+  *map = cm_new_raw(type, user, hash, compare, alloc, dealloc, cm_raw_new());
 }
 
 void cm_drop(struct cheesemap* map) {

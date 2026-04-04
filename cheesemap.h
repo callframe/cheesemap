@@ -107,7 +107,7 @@ struct cm_type {
   cm_usize entry_size;
 };
 
-#define cm_type_construct(key_size, value_size, value_offset, entry_size) \
+#define cm_type_new(key_size, value_size, value_offset, entry_size) \
   ((struct cm_type){key_size, value_size, value_offset, entry_size})
 
 struct cheesemap_raw {
@@ -124,11 +124,10 @@ struct cheesemap_raw {
 #define cm_raw_new() \
   ((struct cheesemap_raw){.ctrl = (cm_u8*)CM_CTRL_STATIC_EMPTY})
 
-bool cm_raw_new_with(struct cheesemap_raw* map, cm_alloc_fn alloc,
-                     cm_u8* user, const struct cm_type* type,
-                     cm_usize initial_capacity);
-void cm_raw_drop(struct cheesemap_raw* map, cm_dealloc_fn dealloc,
-                 cm_u8* user, const struct cm_type* type);
+bool cm_raw_new_with(struct cheesemap_raw* map, cm_alloc_fn alloc, cm_u8* user,
+                     const struct cm_type* type, cm_usize initial_capacity);
+void cm_raw_drop(struct cheesemap_raw* map, cm_dealloc_fn dealloc, cm_u8* user,
+                 const struct cm_type* type);
 bool cm_raw_reserve(struct cheesemap_raw* map, cm_hash_fn hash,
                     cm_alloc_fn alloc, cm_dealloc_fn dealloc, cm_u8* user,
                     const struct cm_type* type, cm_usize additional);
@@ -159,7 +158,7 @@ struct cheesemap {
   struct cheesemap_raw raw;
 };
 
-#define cm_construct(type, user, hash, compare, alloc, dealloc, raw) \
+#define cm_new_raw(type, user, hash, compare, alloc, dealloc, raw) \
   ((struct cheesemap){type, user, hash, compare, alloc, dealloc, raw})
 
 void cm_new(struct cheesemap* map, cm_usize key_size, cm_usize key_align,
