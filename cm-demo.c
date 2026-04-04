@@ -5,8 +5,7 @@
 
 #include "cheesemap.h"
 
-_Noreturn void panic_impl(const char* file, uint32_t line, const char* fmt,
-                          ...) {
+_Noreturn void panic_impl(const char* file, cm_u32 line, const char* fmt, ...) {
   fprintf(stderr, "Panic at %s:%u: ", file, line);
   va_list args;
   va_start(args, fmt);
@@ -20,29 +19,29 @@ _Noreturn void panic_impl(const char* file, uint32_t line, const char* fmt,
 #define countof(arr) (sizeof(arr) / sizeof(*(arr)))
 
 // Simple hash function for string keys
-uint64_t hash_string(const uint8_t* key, uint8_t* user) {
+cm_u64 hash_string(const cm_u8* key, cm_u8* user) {
   (void)user;
   const char* str = *(const char**)key;
-  uint64_t hash = 5381;
+  cm_u64 hash = 5381;
   int c;
   while ((c = *str++)) hash = ((hash << 5) + hash) + c;  // hash * 33 + c
   return hash;
 }
 
 // Compare function for string keys
-bool compare_string(const uint8_t* key1, const uint8_t* key2, uint8_t* user) {
+bool compare_string(const cm_u8* key1, const cm_u8* key2, cm_u8* user) {
   (void)user;
   return strcmp(*(const char**)key1, *(const char**)key2) == 0;
 }
 
 // Default allocator (uses malloc)
-void* default_alloc(uintptr_t size, uint8_t* user) {
+cm_u8* default_alloc(cm_usize size, cm_u8* user) {
   (void)user;
   return malloc(size);
 }
 
 // Default deallocator (uses free)
-void default_dealloc(void* ptr, uint8_t* user) {
+void default_dealloc(cm_u8* ptr, cm_u8* user) {
   (void)user;
   free(ptr);
 }
