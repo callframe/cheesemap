@@ -109,8 +109,10 @@ int main(void) {
 | Go map (Swiss table) | ~68 | |
 | .NET Dictionary | ~70 | |
 | Chromium JS Map | ~102 | |
+| D associative array (LDC) | ~109 | [3] |
 | std::unordered_map + mimalloc | ~110 | [2] |
 | Node.js Map | ~153 | |
+| Ada Hashed_Maps (GNAT) | ~147 | [4] |
 | std::unordered_map | ~176 | |
 | Python dict | ~193 | |
 
@@ -119,7 +121,9 @@ int main(void) {
 **Java HashMap is excluded.** `HashMap<Long, Long>` boxes every key and value into heap objects, and the JVM C2 JIT eliminates the miss-lookup loop entirely after warmup (it can prove missing keys are absent, so the loop body is dead code). The resulting numbers are not a fair comparison against native hash maps.
 
 **[1]** abseil is the reference Swiss table implementation.  
-**[2]** std::unordered_map is chained; mimalloc recovers ~38% by reducing per-node allocation cost. Without it: ~176 ms.
+**[2]** std::unordered_map is chained; mimalloc recovers ~38% by reducing per-node allocation cost. Without it: ~176 ms.  
+**[3]** D's built-in associative array uses per-entry heap allocation; no open-addressing or SIMD.  
+**[4]** Ada's `Ada.Containers.Hashed_Maps` is also chained; `Hash_Type` is 32-bit so the mixing hash is truncated, reducing distribution quality slightly.
 
 ---
 
