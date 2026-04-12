@@ -45,10 +45,10 @@ bool compare_string(const cm_u8* key1, const cm_u8* key2, cm_u8* user) {
   return strcmp(*(const char**)key1, *(const char**)key2) == 0;
 }
 
-// Default allocator (uses malloc)
-void* default_alloc(cm_usize size, cm_u8* user) {
+// Default allocator (uses aligned_alloc)
+void* default_alloc(cm_usize size, cm_usize align, cm_u8* user) {
   (void)user;
-  return malloc(size);
+  return aligned_alloc(align, size);
 }
 
 // Default deallocator (uses free)

@@ -65,14 +65,15 @@ typedef bool (*cm_compare_fn)(const cm_u8* key1, const cm_u8* key2,
                               cm_u8* user);
 
 /* allocator methods */
-typedef cm_u8* (*cm_alloc_fn)(cm_usize size, cm_u8* user);
+typedef cm_u8* (*cm_alloc_fn)(cm_usize size, cm_usize align, cm_u8* user);
 typedef void (*cm_dealloc_fn)(cm_u8* ptr, cm_u8* user);
 
 ////////////////////////////////
 // raw cheesemap implementation
 //
 // layout:
-// [entries...][control bits...][mirror first CM_GROUP_SIZE bits]
+// [padding][entry n-1...entry 1][entry 0][control bits...][mirror first
+// CM_GROUP_SIZE bits]
 
 enum {
   // cheesemap config
@@ -101,14 +102,22 @@ enum {
 extern const cm_u8 CM_CTRL_STATIC_EMPTY[CM_GROUP_SIZE];
 
 struct cm_type {
+  // key size in bytes
   cm_usize key_size;
+  // value size in bytes
   cm_usize value_size;
+  // aligned value offset within an entry
   cm_usize value_offset;
+  // total entry size including padding
   cm_usize entry_size;
+  // required alignment for each entry
+  cm_usize entry_align;
 };
 
-#define cm_type_new(key_size, value_size, value_offset, entry_size) \
-  ((struct cm_type){key_size, value_size, value_offset, entry_size})
+#define cm_type_new(key_size, value_size, value_offset, entry_size, \
+                    entry_align)                                    \
+  ((struct cm_type){key_size, value_size, value_offset, entry_size, \
+                    entry_align})
 
 struct cheesemap_raw {
   // number of buckets as mask
