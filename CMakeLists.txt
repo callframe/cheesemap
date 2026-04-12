@@ -49,6 +49,7 @@ set_target_properties(cheesemap PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON
   C_EXTENSIONS ON
+  POSITION_INDEPENDENT_CODE ON  
 )
 
 ## configuration summary

@@ -357,7 +357,7 @@ static bool cm_raw_resize(struct cheesemap_raw* map, cm_hash_fn hash,
   cm_assert(alloc != NULL && dealloc != NULL);
 
   struct cheesemap_raw new_map;
-  bool success = cm_raw_new_with(&new_map, alloc, user, type, new_capacity);
+  bool success = cm_raw_init_with(&new_map, alloc, user, type, new_capacity);
   if (!success) return false;
 
   cm_raw_rehash(map, &new_map, hash, user, type);
@@ -367,8 +367,8 @@ static bool cm_raw_resize(struct cheesemap_raw* map, cm_hash_fn hash,
   return true;
 }
 
-bool cm_raw_new_with(struct cheesemap_raw* map, cm_alloc_fn alloc, cm_u8* user,
-                     const struct cm_type* type, cm_usize initial_capacity) {
+bool cm_raw_init_with(struct cheesemap_raw* map, cm_alloc_fn alloc, cm_u8* user,
+                      const struct cm_type* type, cm_usize initial_capacity) {
   cm_assert(map != NULL);
   cm_assert(alloc != NULL);
   memset(map, 0, sizeof(*map));
@@ -493,10 +493,10 @@ void cm_raw_drop(struct cheesemap_raw* map, cm_dealloc_fn dealloc, cm_u8* user,
   *map = cm_raw_new();
 }
 
-void cm_new(struct cheesemap* map, cm_usize key_size, cm_usize key_align,
-            cm_usize value_size, cm_usize value_align, cm_u8* user,
-            cm_hash_fn hash, cm_compare_fn compare, cm_alloc_fn alloc,
-            cm_dealloc_fn dealloc) {
+void cm_init(struct cheesemap* map, cm_usize key_size, cm_usize key_align,
+             cm_usize value_size, cm_usize value_align, cm_u8* user,
+             cm_hash_fn hash, cm_compare_fn compare, cm_alloc_fn alloc,
+             cm_dealloc_fn dealloc) {
   cm_assert(map != NULL);
   cm_assert(hash != NULL && compare != NULL);
   cm_assert(alloc != NULL && dealloc != NULL);
@@ -507,7 +507,7 @@ void cm_new(struct cheesemap* map, cm_usize key_size, cm_usize key_align,
 
   struct cm_type type =
       cm_type_new(key_size, value_size, value_offset, entry_size);
-  *map = cm_new_raw(type, user, hash, compare, alloc, dealloc, cm_raw_new());
+  *map = cm_init_inner(type, user, hash, compare, alloc, dealloc, cm_raw_new());
 }
 
 void cm_drop(struct cheesemap* map) {

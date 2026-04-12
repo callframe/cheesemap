@@ -124,8 +124,8 @@ struct cheesemap_raw {
 #define cm_raw_new() \
   ((struct cheesemap_raw){.ctrl = (cm_u8*)CM_CTRL_STATIC_EMPTY})
 
-bool cm_raw_new_with(struct cheesemap_raw* map, cm_alloc_fn alloc, cm_u8* user,
-                     const struct cm_type* type, cm_usize initial_capacity);
+bool cm_raw_init_with(struct cheesemap_raw* map, cm_alloc_fn alloc, cm_u8* user,
+                      const struct cm_type* type, cm_usize initial_capacity);
 void cm_raw_drop(struct cheesemap_raw* map, cm_dealloc_fn dealloc, cm_u8* user,
                  const struct cm_type* type);
 bool cm_raw_reserve(struct cheesemap_raw* map, cm_hash_fn hash,
@@ -158,13 +158,13 @@ struct cheesemap {
   struct cheesemap_raw raw;
 };
 
-#define cm_new_raw(type, user, hash, compare, alloc, dealloc, raw) \
+#define cm_init_inner(type, user, hash, compare, alloc, dealloc, raw) \
   ((struct cheesemap){type, user, hash, compare, alloc, dealloc, raw})
 
-void cm_new(struct cheesemap* map, cm_usize key_size, cm_usize key_align,
-            cm_usize value_size, cm_usize value_align, cm_u8* user,
-            cm_hash_fn hash, cm_compare_fn compare, cm_alloc_fn alloc,
-            cm_dealloc_fn dealloc);
+void cm_init(struct cheesemap* map, cm_usize key_size, cm_usize key_align,
+             cm_usize value_size, cm_usize value_align, cm_u8* user,
+             cm_hash_fn hash, cm_compare_fn compare, cm_alloc_fn alloc,
+             cm_dealloc_fn dealloc);
 void cm_drop(struct cheesemap* map);
 bool cm_insert(struct cheesemap* map, const cm_u8* key, const cm_u8* value);
 bool cm_lookup(const struct cheesemap* map, const cm_u8* key,
@@ -176,9 +176,9 @@ bool cm_reserve(struct cheesemap* map, cm_usize additional);
 // cheesemap convenience macros
 //
 
-#define cm_new_(map, K, V, user, hash_fn, cmp_fn, alloc_fn, dealloc_fn)      \
-  cm_new(map, sizeof(K), _Alignof(K), sizeof(V), _Alignof(V), user, hash_fn, \
-         cmp_fn, alloc_fn, dealloc_fn)
+#define cm_init_(map, K, V, user, hash_fn, cmp_fn, alloc_fn, dealloc_fn)      \
+  cm_init(map, sizeof(K), _Alignof(K), sizeof(V), _Alignof(V), user, hash_fn, \
+          cmp_fn, alloc_fn, dealloc_fn)
 
 #define cm_lookup_(map, key, out_val) \
   cm_lookup(map, (const cm_u8*)&(key), (cm_u8**)(out_val))
