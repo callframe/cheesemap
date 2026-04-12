@@ -92,10 +92,8 @@ static inline void cm_sequence_next(struct sequence* sequence,
 }
 
 /* ctrl ops */
-static inline bool cm_ctrl_is_special(cm_u8 v) { return v & CM_CTRL_DELETED; }
-
 static inline bool cm_ctrl_is_empty(cm_u8 v) {
-  cm_assert(cm_ctrl_is_special(v) == true);
+  cm_assert((v & CM_CTRL_DELETED) != 0);
   return (v & CM_CTRL_END) != 0;
 }
 
@@ -480,15 +478,24 @@ bool cm_raw_remove(struct cheesemap_raw* map, cm_hash_fn hash,
 }
 
 bool cm_raw_insert(struct cheesemap_raw* map, cm_hash_fn hash,
-                   cm_alloc_fn alloc, cm_dealloc_fn dealloc, cm_u8* user,
+                   cm_compare_fn compare, cm_alloc_fn alloc,
+                   cm_dealloc_fn dealloc, cm_u8* user,
                    const struct cm_type* type, const cm_u8* key,
                    const cm_u8* value) {
   cm_assert(map != NULL && hash != NULL);
+  cm_assert(compare != NULL);
   cm_assert(alloc != NULL && dealloc != NULL);
   cm_assert(key != NULL && value != NULL);
 
   cm_hash_t h = hash(key, user);
-  cm_usize index = cm_raw_find_insert_index(map, h);
+  cm_usize index;
+  if (cm_raw_find(map, compare, user, h, type, key, &index)) {
+    cm_u8* elem = cm_raw_elem_at(map, index, type);
+    memcpy(elem + type->value_offset, value, type->value_size);
+    return true;
+  }
+
+  index = cm_raw_find_insert_index(map, h);
 
   cm_u8 old_ctrl = map->ctrl[index];
   if (map->growth_left == 0 && cm_ctrl_is_empty(old_ctrl)) {
@@ -542,8 +549,8 @@ bool cm_insert(struct cheesemap* map, const cm_u8* key, const cm_u8* value) {
   cm_assert(map != NULL);
   cm_assert(key != NULL && value != NULL);
 
-  return cm_raw_insert(&map->raw, map->hash, map->alloc, map->dealloc,
-                       map->user, &map->type, key, value);
+  return cm_raw_insert(&map->raw, map->hash, map->compare, map->alloc,
+                       map->dealloc, map->user, &map->type, key, value);
 }
 
 bool cm_lookup(const struct cheesemap* map, const cm_u8* key,

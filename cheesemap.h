@@ -148,7 +148,8 @@ bool cm_raw_remove(struct cheesemap_raw* map, cm_hash_fn hash,
                    const struct cm_type* type, const cm_u8* key,
                    cm_u8* out_value);
 bool cm_raw_insert(struct cheesemap_raw* map, cm_hash_fn hash,
-                   cm_alloc_fn alloc, cm_dealloc_fn dealloc, cm_u8* user,
+                   cm_compare_fn compare, cm_alloc_fn alloc,
+                   cm_dealloc_fn dealloc, cm_u8* user,
                    const struct cm_type* type, const cm_u8* key,
                    const cm_u8* value);
 
