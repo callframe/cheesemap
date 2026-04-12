@@ -55,7 +55,7 @@ CM_ATTR(hot) static inline cm_usize cm_bitmask_clz(bitmask_t mask) {
 #if CM_GROUP_SIZE == 8
   return cm_clz(mask) / CHAR_BIT;
 #elif CM_GROUP_SIZE == 16
-  return cm_clz(mask);
+  return cm_clz(mask) - (CM_WORD_WIDTH - CM_GROUP_SIZE);
 #else
 #error "unknown group size"
 #endif
