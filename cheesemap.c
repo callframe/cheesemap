@@ -86,6 +86,8 @@ static inline void cm_sequence_next(struct sequence* sequence,
   cm_assert(sequence != NULL);
   cm_assert(sequence->stride <= bucket_mask);
 
+  // Probe groups using the triangular sequence used by swiss tables. Since the
+  // bucket count is a power of two, masking wraps the group index cheaply.
   sequence->stride += CM_GROUP_SIZE;
   sequence->pos += sequence->stride;
   sequence->pos &= bucket_mask;
@@ -114,10 +116,14 @@ static inline group_t cm_group_load(const cm_u8* ctrl) {
 static inline bitmask_t cm_group_match_tag(group_t group, cm_u8 tag) {
   const __m128i tagvec = _mm_set1_epi8(tag);
   __m128i cmp = _mm_cmpeq_epi8(group, tagvec);
+  // movemask packs the top bit of each byte into a 16-bit mask, giving one
+  // candidate bit per ctrl byte in the loaded group.
   return _mm_movemask_epi8(cmp);
 }
 
 static inline bitmask_t cm_group_match_empty_or_deleted(group_t group) {
+  // EMPTY and DELETED both have their top bit set, so movemask directly gives
+  // the "special ctrl byte" mask for the whole group.
   return _mm_movemask_epi8(group);
 }
 
@@ -126,6 +132,8 @@ static inline bitmask_t cm_group_match_empty(group_t group) {
 }
 
 static inline bitmask_t cm_group_match_full(group_t group) {
+  // FULL ctrl bytes clear the top bit, so the full-slot mask is just the
+  // inverse of the special-slot mask for this 16-byte group.
   return ~cm_group_match_empty_or_deleted(group);
 }
 #endif
@@ -223,6 +231,8 @@ static inline void cm_raw_ctrl_set(struct cheesemap_raw* map, cm_usize index,
                                    cm_u8 ctrl) {
   cm_assert(map != NULL);
 
+  // Mirror the first CM_GROUP_SIZE ctrl bytes after the logical ctrl array so
+  // group loads near the end can read a full group without wrap handling.
   cm_usize index2 =
       ((index - CM_GROUP_SIZE) & map->bucket_mask) + CM_GROUP_SIZE;
   map->ctrl[index] = ctrl;
@@ -235,6 +245,9 @@ static void cm_raw_layout(const struct cm_type* type, cm_usize capacity,
   cm_assert(type != NULL && out_buckets != NULL);
   cm_assert(out_ctrl_offset != NULL && out_size != NULL);
 
+  // The raw allocation stores entries first and the ctrl bytes after them.
+  // Buckets stay power-of-two sized for masked probing, and the allocation is
+  // padded so custom allocators can honor the stricter entry alignment.
   cm_usize buckets = cm_capacity_to_buckets(capacity);
   cm_usize ctrl_offset = cm_ctrl_offset(buckets, type);
 
@@ -321,6 +334,8 @@ static bool cm_raw_find(const struct cheesemap_raw* map, cm_compare_fn compare,
                              out_index))
       return true;
 
+    // EMPTY terminates the probe chain: if the key were present, insertion
+    // would have placed it before the first EMPTY slot in the sequence.
     if (cm_group_match_empty(group) != 0) return false;
 
     cm_sequence_next(&seq, map->bucket_mask);
@@ -458,6 +473,11 @@ bool cm_raw_remove(struct cheesemap_raw* map, cm_hash_fn hash,
     memcpy(out_value, elem + type->value_offset, type->value_size);
   }
 
+  // Lookup stops when it sees an EMPTY ctrl byte, so removing an element
+  // cannot always create a new EMPTY slot. If the removed slot sits inside a
+  // full-width run of FULL/DELETED ctrl bytes, we must leave a tombstone here
+  // so probes continue past this group. Otherwise we can mark the slot EMPTY
+  // and refund one growth slot.
   cm_usize index_before = (index - CM_GROUP_SIZE) & map->bucket_mask;
   group_t group_before = cm_group_load(&map->ctrl[index_before]);
   group_t group_at = cm_group_load(&map->ctrl[index]);
@@ -465,6 +485,8 @@ bool cm_raw_remove(struct cheesemap_raw* map, cm_hash_fn hash,
   bitmask_t empty_before = cm_group_match_empty(group_before);
   bitmask_t empty_after = cm_group_match_empty(group_at);
 
+  // Count the contiguous EMPTY span touching the removed slot across the
+  // previous and current groups.
   cm_usize empty_count =
       cm_bitmask_clz(empty_before) + cm_bitmask_ctz(empty_after);
   cm_u8 ctrl = (empty_count >= CM_GROUP_SIZE) ? CM_CTRL_DELETED : CM_CTRL_EMPTY;
@@ -490,17 +512,25 @@ bool cm_raw_insert(struct cheesemap_raw* map, cm_hash_fn hash,
   cm_hash_t h = hash(key, user);
   cm_usize index;
   if (cm_raw_find(map, compare, user, h, type, key, &index)) {
+    // Exact-key inserts overwrite the existing value in place instead of
+    // creating duplicate entries for the same key.
     cm_u8* elem = cm_raw_elem_at(map, index, type);
     memcpy(elem + type->value_offset, value, type->value_size);
     return true;
   }
 
+  // Find the insertion slot before checking growth. Reusing a tombstone does
+  // not consume an EMPTY slot, so it can still succeed even when growth_left
+  // is already zero.
   index = cm_raw_find_insert_index(map, h);
 
   cm_u8 old_ctrl = map->ctrl[index];
   if (map->growth_left == 0 && cm_ctrl_is_empty(old_ctrl)) {
     bool success = cm_raw_reserve(map, hash, alloc, dealloc, user, type, 1);
     if (!success) return success;
+
+    // Resizing rebuilds the ctrl array, so the old insertion slot is no longer
+    // valid and must be recomputed in the new table.
     index = cm_raw_find_insert_index(map, h);
   }
 
