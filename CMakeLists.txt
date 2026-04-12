@@ -38,13 +38,17 @@ target_compile_definitions(cheesemap
 target_compile_options(cheesemap 
   PRIVATE 
     -Wall -Wextra -Werror
-    -std=gnu11
-    -fPIC
 
     $<$<BOOL:${CM_ENABLE_EXTENDED_DEBUG}>:-g3>
     $<$<BOOL:${CM_ENABLE_UBSAN}>:-fsanitize=undefined>
     $<$<BOOL:${CM_ENABLE_ASAN}>:-fsanitize=address>
     $<$<BOOL:${CM_ENABLE_SSE2}>:-msse2>
+)
+
+set_target_properties(cheesemap PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+  C_EXTENSIONS ON
 )
 
 ## configuration summary
