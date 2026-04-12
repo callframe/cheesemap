@@ -94,36 +94,33 @@ int main(void) {
 
 ## Benchmarks
 
-1 000 000 u64→u64 entries: insert, lookup (hit), lookup (miss), remove.
-All implementations use the same murmur-inspired mixing hash where the language allows it.
-Best time across multiple runs is reported — see notes on V-Cache below.
+1,000,000 `u64 -> u64` entries: insert, lookup hit, lookup miss, remove. All implementations use the same murmur-inspired mixing hash where the language allows it. Best time across multiple runs is shown.
 
-**System:** AMD Ryzen 9 7950X3D, Clang 22.1.1 / GCC 15.2.1 / Rust 1.93.0, Linux, performance governor.
+**Platform:** x86-64, Linux, performance governor.
 
-```
-Implementation                  Best (ms)
----------------------------------------------
-abseil flat_hash_map (C++)         34        [1]
-cheesemap SSE2  (Clang)            45
-Java   HashMap                     ~32       [2]
-Rust   HashMap (hashbrown)         48
-cheesemap scalar (Clang)           56
-Go     map 1.26 (Swiss table)      68
-.NET   Dictionary                  70
-Chromium JS Map                   102
-std::unordered_map + mimalloc     ~110       [3]
-cheesemap SSE2  (GCC)              58        [4]
-Node.js Map                       153
-std::unordered_map (Clang)        176
-Python dict                       193
-```
+| Implementation | Best (ms) | Notes |
+|---|---|---|
+| Java HashMap | ~32 | [1] |
+| abseil flat_hash_map | ~34 | [2] |
+| cheesemap SSE2 (Clang) | ~45 | |
+| Rust HashMap (hashbrown) | ~48 | |
+| cheesemap scalar (GCC) | ~53 | |
+| cheesemap scalar (Clang) | ~56 | |
+| cheesemap SSE2 (GCC) | ~58 | [3] |
+| Go map (Swiss table) | ~68 | |
+| .NET Dictionary | ~70 | |
+| Chromium JS Map | ~102 | |
+| std::unordered_map + mimalloc | ~110 | [4] |
+| Node.js Map | ~153 | |
+| std::unordered_map | ~176 | |
+| Python dict | ~193 | |
 
-[1] abseil is the reference Swiss table implementation — its numbers are expected to be strong.  
-[2] Java's best run benefits from C2 JIT reaching peak tier during the measured phase; average is ~67 ms.  
-[3] std::unordered_map is a chained hash map; mimalloc recovers ~38% over the system allocator by reducing per-node allocation overhead. Without mimalloc the best observed time was ~176 ms.  
-[4] GCC's codegen for this workload is ~25% slower than Clang due to a failure to inline the hot lookup path.
+> **Note on extended L3 cache:** The test machine has a split cache topology where the benchmark's ~32 MB working set fits comfortably in one cache domain but thrashes in the other. Best times above reflect lucky scheduling onto the larger cache. Average times are roughly 1.5-2x higher. Pin with `numactl --cpunodebind=0` for reproducible results.
 
-**Note on AMD 3D V-Cache:** The Ryzen 9 7950X3D has two CCDs — one with 96 MB L3 (3D V-Cache) and one with 32 MB L3. The benchmark's working set (~32 MB) sits right on the boundary of the smaller CCD. The OS scheduler assigns the process to a CCD at random, producing a bimodal result distribution: runs landing on the V-Cache CCD are significantly faster. Best times above reflect V-Cache-lucky runs. Average times are roughly 1.5–2× higher on this machine. To pin to the V-Cache CCD for reproducible results: `numactl --cpunodebind=0 ./bench`.
+**[1]** JVM C2 JIT reaching peak tier mid-run inflates the best; average is ~67 ms.  
+**[2]** abseil is the reference Swiss table implementation.  
+**[3]** GCC is ~25% slower than Clang here due to a failure to inline the hot lookup path.  
+**[4]** std::unordered_map is chained; mimalloc recovers ~38% by reducing per-node allocation cost. Without it: ~176 ms.
 
 ---
 
