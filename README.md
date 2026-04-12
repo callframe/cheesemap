@@ -100,27 +100,26 @@ int main(void) {
 
 | Implementation | Best (ms) | Notes |
 |---|---|---|
-| Java HashMap | ~32 | [1] |
-| abseil flat_hash_map | ~34 | [2] |
+| abseil flat_hash_map | ~34 | [1] |
 | cheesemap SSE2 (Clang) | ~45 | |
 | Rust HashMap (hashbrown) | ~48 | |
 | cheesemap scalar (GCC) | ~53 | |
 | cheesemap scalar (Clang) | ~56 | |
-| cheesemap SSE2 (GCC) | ~58 | [3] |
+| cheesemap SSE2 (GCC) | ~58 | |
 | Go map (Swiss table) | ~68 | |
 | .NET Dictionary | ~70 | |
 | Chromium JS Map | ~102 | |
-| std::unordered_map + mimalloc | ~110 | [4] |
+| std::unordered_map + mimalloc | ~110 | [2] |
 | Node.js Map | ~153 | |
 | std::unordered_map | ~176 | |
 | Python dict | ~193 | |
 
 > **Note on extended L3 cache:** The test machine has a split cache topology where the benchmark's ~32 MB working set fits comfortably in one cache domain but thrashes in the other. Best times above reflect lucky scheduling onto the larger cache. Average times are roughly 1.5-2x higher. Pin with `numactl --cpunodebind=0` for reproducible results.
 
-**[1]** JVM C2 JIT reaching peak tier mid-run inflates the best; average is ~67 ms.  
-**[2]** abseil is the reference Swiss table implementation.  
-**[3]** GCC is ~25% slower than Clang here due to a failure to inline the hot lookup path.  
-**[4]** std::unordered_map is chained; mimalloc recovers ~38% by reducing per-node allocation cost. Without it: ~176 ms.
+**Java HashMap is excluded.** `HashMap<Long, Long>` boxes every key and value into heap objects, and the JVM C2 JIT eliminates the miss-lookup loop entirely after warmup (it can prove missing keys are absent, so the loop body is dead code). The resulting numbers are not a fair comparison against native hash maps.
+
+**[1]** abseil is the reference Swiss table implementation.  
+**[2]** std::unordered_map is chained; mimalloc recovers ~38% by reducing per-node allocation cost. Without it: ~176 ms.
 
 ---
 
