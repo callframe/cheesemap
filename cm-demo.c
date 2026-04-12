@@ -49,7 +49,7 @@ void default_dealloc(cm_u8* ptr, cm_u8* user) {
 int main(void) {
   // Create a map: string -> int (word frequency counter)
   struct cheesemap map;
-  cm_new_(&map, const char*, int, NULL, hash_string, compare_string,
+  cm_init_(&map, const char*, int, NULL, hash_string, compare_string,
           default_alloc, default_dealloc);
 
   // Count word frequencies
