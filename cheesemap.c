@@ -204,6 +204,24 @@ static inline cm_usize cm_ctrl_offset(cm_usize buckets,
   return cm_align_up(offset, ctrl_align);
 }
 
+static inline void cm_raw_layout(const struct cm_type* type, cm_usize capacity,
+                                 cm_usize* out_buckets,
+                                 cm_usize* out_ctrl_offset,
+                                 cm_usize* out_size) {
+  cm_assert(type != NULL && out_buckets != NULL);
+  cm_assert(out_ctrl_offset != NULL && out_size != NULL);
+
+  cm_usize buckets = cm_capacity_to_buckets(capacity);
+  cm_usize ctrl_offset = cm_ctrl_offset(buckets, type);
+
+  cm_usize size = ctrl_offset + buckets + CM_GROUP_SIZE;
+  size = cm_align_up(size, cm_alloc_align(type));
+
+  *out_buckets = buckets;
+  *out_ctrl_offset = ctrl_offset;
+  *out_size = size;
+}
+
 static inline cm_u8* cm_raw_elem_at(const struct cheesemap_raw* map,
                                     cm_usize index,
                                     const struct cm_type* type) {
@@ -373,19 +391,15 @@ static bool cm_raw_resize(struct cheesemap_raw* map, cm_hash_fn hash,
 }
 
 bool cm_raw_init_with(struct cheesemap_raw* map, cm_alloc_fn alloc, cm_u8* user,
-                      const struct cm_type* type, cm_usize initial_capacity) {
+                      const struct cm_type* type, cm_usize init_cap) {
   cm_assert(map != NULL);
   cm_assert(alloc != NULL);
   memset(map, 0, sizeof(*map));
 
-  cm_usize buckets = cm_capacity_to_buckets(initial_capacity);
-  cm_usize ctrl_offset = cm_ctrl_offset(buckets, type);
+  cm_usize buckets, ctrl_offset, size;
+  cm_raw_layout(type, init_cap, &buckets, &ctrl_offset, &size);
 
-  cm_usize align = cm_alloc_align(type);
-  cm_usize size = ctrl_offset + buckets + CM_GROUP_SIZE;
-  size = cm_align_up(size, align);
-
-  cm_u8* ptr = alloc(size, align, user);
+  cm_u8* ptr = alloc(size, cm_alloc_align(type), user);
   if (ptr == NULL) return false;
 
   cm_u8* ctrl = ptr + ctrl_offset;

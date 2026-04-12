@@ -77,7 +77,6 @@ typedef void (*cm_dealloc_fn)(cm_u8* ptr, cm_u8* user);
 
 enum {
   // cheesemap config
-  CM_INITIAL_CAPACITY = CM_GROUP_SIZE,
   CM_LOAD_DENOM = 8,
   CM_LOAD_NUM = 7,
   //
@@ -134,7 +133,7 @@ struct cheesemap_raw {
   ((struct cheesemap_raw){.ctrl = (cm_u8*)CM_CTRL_STATIC_EMPTY})
 
 bool cm_raw_init_with(struct cheesemap_raw* map, cm_alloc_fn alloc, cm_u8* user,
-                      const struct cm_type* type, cm_usize initial_capacity);
+                      const struct cm_type* type, cm_usize init_cap);
 void cm_raw_drop(struct cheesemap_raw* map, cm_dealloc_fn dealloc, cm_u8* user,
                  const struct cm_type* type);
 bool cm_raw_reserve(struct cheesemap_raw* map, cm_hash_fn hash,
