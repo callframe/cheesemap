@@ -1,7 +1,7 @@
 Cheesemap
 =========
 
-Cheesemap is a Swiss-table HashMap implementation in C. It is designed to be fast, easy to understand, and easy to embed — the entire implementation is a single `.c` / `.h` pair with no dependencies.
+Cheesemap is a Swiss-table HashMap implementation in C. It is designed to be fast, easy to understand, and easy to embed - the entire implementation is a single `.c` / `.h` pair with no dependencies.
 
 The map is open-addressing with SIMD-accelerated control-byte matching (SSE2 / AVX2 / AVX-512 via compile-time flags). It may use slightly more memory than necessary immediately after a resize and does not yet provide a shrink method. Not yet production-tested but fully functional.
 
@@ -115,8 +115,12 @@ int main(void) {
 | Ada Hashed_Maps (GNAT) | ~147 | [4] |
 | std::unordered_map | ~176 | |
 | Python dict | ~193 | |
-| zsh assoc array | ~5100 | [5] |
-| bash assoc array | ~7000 | [5] |
+| PHP array | ~77 | [5] |
+| Lua 5.5 table | ~93 | [5] |
+| LuaJIT table | ~195 | [5] |
+| Perl hash | ~696 | |
+| zsh assoc array | ~5100 | [6] |
+| bash assoc array | ~7000 | [6] |
 
 > **Note on extended L3 cache:** The test machine has a split cache topology where the benchmark's ~32 MB working set fits comfortably in one cache domain but thrashes in the other. Best times above reflect lucky scheduling onto the larger cache. Average times are roughly 1.5-2x higher. Pin with `numactl --cpunodebind=0` for reproducible results.
 
@@ -126,7 +130,8 @@ int main(void) {
 **[2]** std::unordered_map is chained; mimalloc recovers ~38% by reducing per-node allocation cost. Without it: ~176 ms.  
 **[3]** D's built-in associative array uses per-entry heap allocation; no open-addressing or SIMD.  
 **[4]** Ada's `Ada.Containers.Hashed_Maps` is also chained; `Hash_Type` is 32-bit so the mixing hash is truncated, reducing distribution quality slightly.  
-**[5]** Measured at N=10,000 (100x smaller) and extrapolated. Shells are not meant for this.
+**[5]** Keys are multiplied by a large prime to force hash mode - sequential integer keys trigger array/packed optimizations in Lua and PHP, bypassing the hash table entirely.  
+**[6]** Measured at N=10,000 (100x smaller) and extrapolated. Shells are not meant for this.
 
 ---
 
