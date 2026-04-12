@@ -115,6 +115,8 @@ int main(void) {
 | Ada Hashed_Maps (GNAT) | ~147 | [4] |
 | std::unordered_map | ~176 | |
 | Python dict | ~193 | |
+| zsh assoc array | ~5100 | [5] |
+| bash assoc array | ~7000 | [5] |
 
 > **Note on extended L3 cache:** The test machine has a split cache topology where the benchmark's ~32 MB working set fits comfortably in one cache domain but thrashes in the other. Best times above reflect lucky scheduling onto the larger cache. Average times are roughly 1.5-2x higher. Pin with `numactl --cpunodebind=0` for reproducible results.
 
@@ -123,7 +125,8 @@ int main(void) {
 **[1]** abseil is the reference Swiss table implementation.  
 **[2]** std::unordered_map is chained; mimalloc recovers ~38% by reducing per-node allocation cost. Without it: ~176 ms.  
 **[3]** D's built-in associative array uses per-entry heap allocation; no open-addressing or SIMD.  
-**[4]** Ada's `Ada.Containers.Hashed_Maps` is also chained; `Hash_Type` is 32-bit so the mixing hash is truncated, reducing distribution quality slightly.
+**[4]** Ada's `Ada.Containers.Hashed_Maps` is also chained; `Hash_Type` is 32-bit so the mixing hash is truncated, reducing distribution quality slightly.  
+**[5]** Measured at N=10,000 (100x smaller) and extrapolated. Shells are not meant for this.
 
 ---
 
