@@ -204,24 +204,6 @@ static inline cm_usize cm_ctrl_offset(cm_usize buckets,
   return cm_align_up(offset, ctrl_align);
 }
 
-static inline void cm_raw_layout(const struct cm_type* type, cm_usize capacity,
-                                 cm_usize* out_buckets,
-                                 cm_usize* out_ctrl_offset,
-                                 cm_usize* out_size) {
-  cm_assert(type != NULL && out_buckets != NULL);
-  cm_assert(out_ctrl_offset != NULL && out_size != NULL);
-
-  cm_usize buckets = cm_capacity_to_buckets(capacity);
-  cm_usize ctrl_offset = cm_ctrl_offset(buckets, type);
-
-  cm_usize size = ctrl_offset + buckets + CM_GROUP_SIZE;
-  size = cm_align_up(size, cm_alloc_align(type));
-
-  *out_buckets = buckets;
-  *out_ctrl_offset = ctrl_offset;
-  *out_size = size;
-}
-
 static inline cm_u8* cm_raw_elem_at(const struct cheesemap_raw* map,
                                     cm_usize index,
                                     const struct cm_type* type) {
@@ -247,6 +229,23 @@ static inline void cm_raw_ctrl_set(struct cheesemap_raw* map, cm_usize index,
       ((index - CM_GROUP_SIZE) & map->bucket_mask) + CM_GROUP_SIZE;
   map->ctrl[index] = ctrl;
   map->ctrl[index2] = ctrl;
+}
+
+static void cm_raw_layout(const struct cm_type* type, cm_usize capacity,
+                          cm_usize* out_buckets, cm_usize* out_ctrl_offset,
+                          cm_usize* out_size) {
+  cm_assert(type != NULL && out_buckets != NULL);
+  cm_assert(out_ctrl_offset != NULL && out_size != NULL);
+
+  cm_usize buckets = cm_capacity_to_buckets(capacity);
+  cm_usize ctrl_offset = cm_ctrl_offset(buckets, type);
+
+  cm_usize size = ctrl_offset + buckets + CM_GROUP_SIZE;
+  size = cm_align_up(size, cm_alloc_align(type));
+
+  *out_buckets = buckets;
+  *out_ctrl_offset = ctrl_offset;
+  *out_size = size;
 }
 
 static bool cm_raw_find_insert_index_in_group(const struct cheesemap_raw* map,
