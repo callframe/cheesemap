@@ -12,24 +12,24 @@ endif()
 
 set(CM_PANIC_SYM "panic_impl" CACHE STRING "Symbol name of the panic method")
 
-option(CM_ENABLE_EXTENDED_DEBUG "Whether to enable extended debug information" OFF)
 option(CM_ENABLE_UBSAN "Whether to enable undefined behavior sanitizer" OFF)
 option(CM_ENABLE_ASAN "Whether to enable address sanitizer" OFF)
 option(CM_ENABLE_SSE2 "Whether to enable SSE2 usage" OFF)
+option(CM_ENABLE_NATIVE "Whether to enable -march=native" OFF)
 
 ## source
 
-set(cheesemap_source "${CMAKE_CURRENT_SOURCE_DIR}/cheesemap.c")
+set(cm_topdir "${CMAKE_CURRENT_SOURCE_DIR}")
+set(cm_source "${cm_topdir}/cheesemap.c")
 
 ## library target
 
-add_library(cheesemap OBJECT ${cheesemap_source})
-target_include_directories(cheesemap PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+add_library(cheesemap OBJECT ${cm_source})
+target_include_directories(cheesemap PUBLIC ${cm_topdir})
 
 target_compile_definitions(cheesemap 
   PRIVATE 
     CM_PANIC_SYM=${CM_PANIC_SYM}
-    $<$<BOOL:${CM_ENABLE_EXTENDED_DEBUG}>:CM_ENABLE_EXTENDED_DEBUG=1>
     $<$<BOOL:${CM_ENABLE_UBSAN}>:CM_ENABLE_UBSAN=1>
     $<$<BOOL:${CM_ENABLE_ASAN}>:CM_ENABLE_ASAN=1>
     $<$<BOOL:${CM_ENABLE_SSE2}>:CM_ENABLE_SSE2=1>
@@ -39,24 +39,25 @@ target_compile_options(cheesemap
   PRIVATE 
     -Wall -Wextra -Werror
 
-    $<$<BOOL:${CM_ENABLE_EXTENDED_DEBUG}>:-g3>
+    $<$<CONFIG:Debug>:-g3>
     $<$<BOOL:${CM_ENABLE_UBSAN}>:-fsanitize=undefined>
     $<$<BOOL:${CM_ENABLE_ASAN}>:-fsanitize=address>
     $<$<BOOL:${CM_ENABLE_SSE2}>:-msse2>
+    $<$<BOOL:${CM_ENABLE_NATIVE}>:-march=native>
 )
 
 set_target_properties(cheesemap PROPERTIES
   C_STANDARD 11
   C_STANDARD_REQUIRED ON
   C_EXTENSIONS ON
-  POSITION_INDEPENDENT_CODE ON  
+  POSITION_INDEPENDENT_CODE ON
 )
 
 ## configuration summary
 
 message(STATUS "cheesemap configuration:")
 message(STATUS "  CM_PANIC_SYM: ${CM_PANIC_SYM}")
-message(STATUS "  CM_ENABLE_EXTENDED_DEBUG: ${CM_ENABLE_EXTENDED_DEBUG}")
 message(STATUS "  CM_ENABLE_UBSAN: ${CM_ENABLE_UBSAN}")
 message(STATUS "  CM_ENABLE_ASAN: ${CM_ENABLE_ASAN}")
 message(STATUS "  CM_ENABLE_SSE2: ${CM_ENABLE_SSE2}")
+message(STATUS "  CM_ENABLE_NATIVE: ${CM_ENABLE_NATIVE}")
