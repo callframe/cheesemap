@@ -53,6 +53,7 @@ set(cm_tidwalldir "${cm_benchesdir}/tidwall")
 target_include_directories(tidwall_bench PRIVATE "${cm_tidwalldir}")
 target_sources(tidwall_bench PRIVATE "${cm_tidwalldir}/hashmap.c")
 
+target_include_directories(abseil_bench PRIVATE "${cm_benchesdir}/abseil")
 target_link_libraries(abseil_bench PRIVATE absl::flat_hash_map)
 
 set(cm_klibdir "${cm_benchesdir}/klib")
