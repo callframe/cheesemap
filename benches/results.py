@@ -104,6 +104,7 @@ def main():
         "std::unordered_map": root_dir / "unordered.json",
         "tidwall": root_dir / "tidwall.json",
         "absl::flat_hash_map": root_dir / "abseil.json",
+        "khash": root_dir / "klib.json",
     }
 
     all_results = {}

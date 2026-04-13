@@ -13,6 +13,7 @@ set(cm_bench_targets
   tidwall_bench
   unordered_map_bench
   abseil_bench
+  klib_bench
 )
 
 foreach(target_name IN LISTS cm_bench_targets)
@@ -53,3 +54,6 @@ target_include_directories(tidwall_bench PRIVATE "${cm_tidwalldir}")
 target_sources(tidwall_bench PRIVATE "${cm_tidwalldir}/hashmap.c")
 
 target_link_libraries(abseil_bench PRIVATE absl::flat_hash_map)
+
+set(cm_klibdir "${cm_benchesdir}/klib")
+target_include_directories(klib_bench PRIVATE "${cm_klibdir}")
