@@ -1,6 +1,6 @@
 #include <benchmark/benchmark.h>
 
-#include "bench_common.hpp"
+#include "bench_common.h"
 
 namespace {
 

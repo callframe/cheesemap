@@ -1,70 +1,72 @@
 #include <benchmark/benchmark.h>
 
-#include "bench_common.hpp"
+#include "bench_common.h"
 
 namespace {
 
 using namespace cmbench;
 
 static void BM_Insert_Scalar(benchmark::State& state) {
-  bench_insert<TidwallAdapter<std::uint64_t, ScalarValue>>(
-      state, scalar_workload(), {"tidwall_hashmap", "c", "Scalar", "Insert"});
+  bench_insert<AbseilAdapter<std::uint64_t, ScalarValue>>(
+      state, scalar_workload(),
+      {"absl::flat_hash_map", "c++", "Scalar", "Insert"});
 }
 static void BM_LookupHit_Scalar(benchmark::State& state) {
-  bench_lookup_hit<TidwallAdapter<std::uint64_t, ScalarValue>>(
+  bench_lookup_hit<AbseilAdapter<std::uint64_t, ScalarValue>>(
       state, scalar_workload(),
-      {"tidwall_hashmap", "c", "Scalar", "LookupHit"});
+      {"absl::flat_hash_map", "c++", "Scalar", "LookupHit"});
 }
 static void BM_LookupMiss_Scalar(benchmark::State& state) {
-  bench_lookup_miss<TidwallAdapter<std::uint64_t, ScalarValue>>(
+  bench_lookup_miss<AbseilAdapter<std::uint64_t, ScalarValue>>(
       state, scalar_workload(),
-      {"tidwall_hashmap", "c", "Scalar", "LookupMiss"});
+      {"absl::flat_hash_map", "c++", "Scalar", "LookupMiss"});
 }
 static void BM_Erase_Scalar(benchmark::State& state) {
-  bench_erase<TidwallAdapter<std::uint64_t, ScalarValue>>(
-      state, scalar_workload(), {"tidwall_hashmap", "c", "Scalar", "Erase"});
+  bench_erase<AbseilAdapter<std::uint64_t, ScalarValue>>(
+      state, scalar_workload(),
+      {"absl::flat_hash_map", "c++", "Scalar", "Erase"});
 }
 
 static void BM_Insert_HandlePayload(benchmark::State& state) {
-  bench_insert<TidwallAdapter<EntityId, ComponentPayload>>(
+  bench_insert<AbseilAdapter<EntityId, ComponentPayload>>(
       state, entity_workload(),
-      {"tidwall_hashmap", "c", "HandlePayload", "Insert"});
+      {"absl::flat_hash_map", "c++", "HandlePayload", "Insert"});
 }
 static void BM_LookupHit_HandlePayload(benchmark::State& state) {
-  bench_lookup_hit<TidwallAdapter<EntityId, ComponentPayload>>(
+  bench_lookup_hit<AbseilAdapter<EntityId, ComponentPayload>>(
       state, entity_workload(),
-      {"tidwall_hashmap", "c", "HandlePayload", "LookupHit"});
+      {"absl::flat_hash_map", "c++", "HandlePayload", "LookupHit"});
 }
 static void BM_LookupMiss_HandlePayload(benchmark::State& state) {
-  bench_lookup_miss<TidwallAdapter<EntityId, ComponentPayload>>(
+  bench_lookup_miss<AbseilAdapter<EntityId, ComponentPayload>>(
       state, entity_workload(),
-      {"tidwall_hashmap", "c", "HandlePayload", "LookupMiss"});
+      {"absl::flat_hash_map", "c++", "HandlePayload", "LookupMiss"});
 }
 static void BM_Erase_HandlePayload(benchmark::State& state) {
-  bench_erase<TidwallAdapter<EntityId, ComponentPayload>>(
+  bench_erase<AbseilAdapter<EntityId, ComponentPayload>>(
       state, entity_workload(),
-      {"tidwall_hashmap", "c", "HandlePayload", "Erase"});
+      {"absl::flat_hash_map", "c++", "HandlePayload", "Erase"});
 }
 
 static void BM_Insert_CompositeKey(benchmark::State& state) {
-  bench_insert<TidwallAdapter<ComponentKey, ComponentMeta>>(
+  bench_insert<AbseilAdapter<ComponentKey, ComponentMeta>>(
       state, component_workload(),
-      {"tidwall_hashmap", "c", "CompositeKey", "Insert"});
+      {"absl::flat_hash_map", "c++", "CompositeKey", "Insert"});
 }
 static void BM_LookupHit_CompositeKey(benchmark::State& state) {
-  bench_lookup_hit<TidwallAdapter<ComponentKey, ComponentMeta>>(
+  bench_lookup_hit<AbseilAdapter<ComponentKey, ComponentMeta>>(
       state, component_workload(),
-      {"tidwall_hashmap", "c", "CompositeKey", "LookupHit"});
+      {"absl::flat_hash_map", "c++", "CompositeKey", "LookupHit"});
 }
 static void BM_LookupMiss_CompositeKey(benchmark::State& state) {
-  bench_lookup_miss<TidwallAdapter<ComponentKey, ComponentMeta>>(
+  bench_lookup_miss<AbseilAdapter<ComponentKey, ComponentMeta>>(
       state, component_workload(),
-      {"tidwall_hashmap", "c", "CompositeKey", "LookupMiss"});
+      {"absl::flat_hash_map", "c++", "CompositeKey", "LookupMiss"});
 }
 static void BM_Erase_CompositeKey(benchmark::State& state) {
-  bench_erase<TidwallAdapter<ComponentKey, ComponentMeta>>(
+  bench_erase<AbseilAdapter<ComponentKey, ComponentMeta>>(
       state, component_workload(),
-      {"tidwall_hashmap", "c", "CompositeKey", "Erase"});
+      {"absl::flat_hash_map", "c++", "CompositeKey", "Erase"});
 }
 
 }  // namespace

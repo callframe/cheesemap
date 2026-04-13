@@ -17,7 +17,7 @@ set(cm_bench_targets
 )
 
 foreach(target_name IN LISTS cm_bench_targets)
-  add_executable(${target_name} "${cm_benchesdir}/${target_name}.cpp")
+  add_executable(${target_name} "${cm_benchesdir}/${target_name}.cc")
 
   target_include_directories(${target_name}
     PRIVATE
