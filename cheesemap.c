@@ -175,7 +175,9 @@ static inline bitmask_t cm_group_match_tag(group_t group, cm_u8 tag) {
 /* ctrl's n stuff */
 
 static inline cm_usize cm_h1(cm_hash_t hash) {
-  return (cm_usize)(hash >> CM_FP_SIZE);
+  // Primary hash function for indexing into the bucket array.
+  // On 32bit platforms, we ignore the top 32 bits of the hash
+  return (cm_usize)hash;
 }
 
 static inline cm_u8 cm_h2(cm_hash_t hash) {
