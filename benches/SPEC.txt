@@ -1,0 +1,234 @@
+Benchmark Specification
+
+Purpose
+
+This document defines the benchmark protocol for this repository. It is not tied to any specific data structure, language, runtime, or library. Its purpose is to ensure that all benchmark results are reproducible, comparable, and technically defensible.
+
+Scope
+
+This specification applies to all microbenchmarks and throughput benchmarks added to this repository, including native, managed, interpreted, and JIT-compiled implementations.
+
+Benchmark Goals
+
+The benchmark suite must measure:
+
+1. Steady-state operation cost for defined workloads.
+2. Sensitivity to key shape, value shape, and hash quality.
+3. Sensitivity to lookup hit rate, miss rate, insertion rate, and deletion rate.
+4. Variance across repeated runs under a controlled environment.
+
+The benchmark suite must not:
+
+1. Mix unrelated workloads into a single reported result without exposing the individual phases.
+2. Compare implementations that are not performing the same logical work.
+3. Rely on implementation-specific shortcuts that bypass the workload under test.
+
+Common Rules
+
+1. Every benchmark case must define:
+   - dataset size
+   - key type
+   - value type
+   - hash function or hasher configuration
+   - equality semantics
+   - operation sequence
+   - hit and miss distribution
+
+2. Every benchmark case must use deterministic input generation from a fixed seed.
+
+3. Every benchmark case must prevent dead-code elimination by consuming benchmark outputs in a way visible to the optimizer barrier provided by the benchmark framework.
+
+4. Every implementation in a comparison set must execute the same logical dataset and the same operation sequence.
+
+5. Reported timings must be wall-clock timings measured by the benchmark framework unless otherwise stated.
+
+6. A benchmark must not include one-time setup cost inside the measured region unless the benchmark explicitly claims to measure setup cost.
+
+7. Data generation, fixture construction, and input shuffling must happen outside the timed region unless the benchmark case is explicitly a setup benchmark.
+
+Workload Categories
+
+Each benchmark must declare one of the following categories:
+
+1. Insert
+   Measures insertion of N unique keys into an empty container.
+
+2. LookupHit
+   Measures successful lookup of existing keys.
+
+3. LookupMiss
+   Measures unsuccessful lookup of absent keys.
+
+4. Erase
+   Measures deletion of existing keys.
+
+5. Mixed
+   Measures a fixed operation mix such as 80 percent lookup, 10 percent insert, 10 percent erase.
+
+6. Iterate
+   Measures full traversal of all live elements.
+
+Each category must be reported separately. A combined total may be reported as a derived value, but only if the component phases are also reported.
+
+Dataset Definitions
+
+Datasets must be named and versioned. Each dataset definition must specify:
+
+1. Key layout
+   Examples: u64, pair<u32,u32>, fixed-size struct, string handle.
+
+2. Value layout
+   Examples: u64, pointer-sized value, fixed-size payload, metadata struct.
+
+3. Entry count
+
+4. Key distribution
+   Examples: sequential then shuffled, pre-mixed random, clustered, adversarial.
+
+5. Lookup sets
+   - hit set
+   - miss set
+
+6. Hash quality profile
+   - good hash
+   - weak hash
+   - adversarial hash
+
+Recommended baseline datasets:
+
+1. Scalar
+   u64 key, u64 value
+
+2. HandlePayload
+   small fixed-size handle key, medium fixed-size payload value
+
+3. CompositeKey
+   composite fixed-size key, fixed-size metadata value
+
+Hash Policy
+
+Hash behavior must be explicit.
+
+1. If the benchmark compares containers that accept user-provided hashes, the benchmark must state the exact hash function used.
+
+2. If an implementation performs internal post-mixing or additional hash finalization, that is part of the implementation and must not be stripped out for benchmarking.
+
+3. Weak-hash and adversarial-hash cases must be reported separately from good-hash cases.
+
+4. Report hash quality as a dataset attribute, not as an informal note.
+
+Operation Semantics
+
+For all compared implementations:
+
+1. Insert must mean insertion or overwrite according to the implementation's normal semantics.
+
+2. LookupHit must verify that the returned value corresponds to the requested key.
+
+3. LookupMiss must verify absence.
+
+4. Erase must verify that the element existed and was removed.
+
+5. Mixed workloads must use a deterministic precomputed operation stream.
+
+6. If reserve or preallocation is used, that choice must be declared explicitly and applied consistently to all implementations that support an equivalent capability.
+
+Timing Rules
+
+1. Use at least 5 independent runs per benchmark case.
+
+2. Report:
+   - mean
+   - minimum
+   - maximum
+   - optionally standard deviation
+
+3. If a benchmark framework already handles warmup and statistical sampling, its configuration must be recorded.
+
+4. For JIT or managed runtimes, warmup policy must be explicit.
+
+5. If a benchmark includes separate phases, time each phase independently.
+
+Environment Control
+
+Each benchmark report must record:
+
+1. CPU model
+2. core count
+3. operating system
+4. compiler and version
+5. runtime and version
+6. optimization flags
+7. benchmark framework version
+8. allocator configuration if relevant
+9. SIMD configuration if relevant
+10. thread count
+
+Recommended controls:
+
+1. Run on an otherwise idle machine.
+2. Use a fixed CPU governor when possible.
+3. Pin to a fixed core or NUMA node when possible.
+4. Disable unrelated background load when possible.
+
+Output Format
+
+Every benchmark run must emit machine-readable output.
+
+Required raw fields:
+
+1. benchmark_name
+2. implementation
+3. language
+4. dataset
+5. workload_category
+6. hash_quality
+7. entry_count
+8. run_index
+9. time_unit
+10. elapsed_value
+
+Recommended additional fields:
+
+1. simd_mode
+2. allocator
+3. compiler
+4. compiler_flags
+5. runtime
+6. notes
+
+CSV or JSON output is acceptable. Raw per-run data must be preserved in the repository or in a referenced artifact location.
+
+Comparison Rules
+
+A comparison is valid only if:
+
+1. The compared implementations operate on equivalent datasets.
+2. The compared implementations perform equivalent logical operations.
+3. Reported numbers are taken from the same benchmark protocol revision.
+
+A comparison is not valid if:
+
+1. One implementation uses a specialized fast path that changes the benchmarked problem.
+2. One implementation includes setup cost and another excludes it.
+3. One implementation is measured with a different dataset shape or hit/miss mix.
+
+Revision Policy
+
+When the benchmark protocol changes, results produced under the old protocol must not be silently mixed with results from the new protocol.
+
+Each benchmark output set must record:
+
+1. protocol version
+2. dataset version
+3. implementation revision
+
+Minimum Acceptance Standard
+
+No benchmark result may be added to the README or other summary tables unless:
+
+1. the raw data exists
+2. the benchmark case is reproducible from checked-in code or documented external commands
+3. the environment and flags are recorded
+4. at least 5 runs were collected
+

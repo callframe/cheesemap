@@ -3,7 +3,7 @@ Cheesemap
 
 Cheesemap is a Swiss-table HashMap implementation in C. It is designed to be fast, easy to understand, and easy to embed - the entire implementation is a single `.c` / `.h` pair with no dependencies.
 
-The map is open-addressing with SIMD-accelerated control-byte matching (SSE2 / AVX2 / AVX-512 via compile-time flags). It may use slightly more memory than necessary immediately after a resize and does not yet provide a shrink method. Not yet production-tested but fully functional.
+The map is open-addressing with optional SIMD-accelerated control-byte matching (SSE2). It may use slightly more memory than necessary immediately after a resize and does not yet provide a shrink method. Not yet production-tested but fully functional.
 
 ## Example
 
@@ -94,44 +94,15 @@ int main(void) {
 
 ## Benchmarks
 
-1,000,000 `u64 -> u64` entries: insert, lookup hit, lookup miss, remove. All implementations use the same murmur-inspired mixing hash where the language allows it. Best time across multiple runs is shown.
+Comprehensive comparison of 1,000,000 entry operations (Insert, LookupHit, LookupMiss, Erase) across multiple data types. All implementations use the same xxh_avalanche hash function. Times shown are mean values across 5 repetitions with SSE2 enabled.
 
-**Platform:** x86-64, Linux, performance governor.
+![Benchmark Comparison](benchmarks.png)
 
-| Implementation | Best (ms) | Notes |
-|---|---|---|
-| abseil flat_hash_map | ~34 | [1] |
-| cheesemap SSE2 (Clang) | ~45 | |
-| Rust HashMap (hashbrown) | ~48 | |
-| cheesemap scalar (GCC) | ~53 | |
-| cheesemap scalar (Clang) | ~56 | |
-| cheesemap SSE2 (GCC) | ~58 | |
-| Go map (Swiss table) | ~68 | |
-| .NET Dictionary | ~70 | |
-| Chromium JS Map | ~102 | |
-| D associative array (LDC) | ~109 | [3] |
-| std::unordered_map + mimalloc | ~110 | [2] |
-| Node.js Map | ~153 | |
-| Ada Hashed_Maps (GNAT) | ~147 | [4] |
-| std::unordered_map | ~176 | |
-| Python dict | ~193 | |
-| PHP array | ~77 | [5] |
-| Lua 5.5 table | ~93 | [5] |
-| LuaJIT table | ~195 | [5] |
-| Perl hash | ~696 | |
-| zsh assoc array | ~5100 | [6] |
-| bash assoc array | ~7000 | [6] |
-
-> **Note on extended L3 cache:** The test machine has a split cache topology where the benchmark's ~32 MB working set fits comfortably in one cache domain but thrashes in the other. Best times above reflect lucky scheduling onto the larger cache. Average times are roughly 1.5-2x higher. Pin with `numactl --cpunodebind=0` for reproducible results.
-
-**Java HashMap is excluded.** `HashMap<Long, Long>` boxes every key and value into heap objects, and the JVM C2 JIT eliminates the miss-lookup loop entirely after warmup (it can prove missing keys are absent, so the loop body is dead code). The resulting numbers are not a fair comparison against native hash maps.
-
-**[1]** abseil is the reference Swiss table implementation.  
-**[2]** std::unordered_map is chained; mimalloc recovers ~38% by reducing per-node allocation cost. Without it: ~176 ms.  
-**[3]** D's built-in associative array uses per-entry heap allocation; no open-addressing or SIMD.  
-**[4]** Ada's `Ada.Containers.Hashed_Maps` is also chained; `Hash_Type` is 32-bit so the mixing hash is truncated, reducing distribution quality slightly.  
-**[5]** Keys are multiplied by a large prime to force hash mode - sequential integer keys trigger array/packed optimizations in Lua and PHP, bypassing the hash table entirely.  
-**[6]** Measured at N=10,000 (100x smaller) and extrapolated. Shells are not meant for this.
+**Notes:**
+- absl::flat_hash_map is Google's reference Swiss table implementation
+- std::unordered_map uses chained hashing (separate chaining with linked lists)
+- tidwall_hashmap is a C implementation using open addressing
+- All times in milliseconds (lower is better)
 
 ---
 

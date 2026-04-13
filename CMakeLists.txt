@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 4.0)
 project(cheesemap
   VERSION 0.1.0
   DESCRIPTION "A high-performance HashMap"
+  LANGUAGES C CXX
 )
 
 if(MSVC)
@@ -16,10 +17,12 @@ option(CM_ENABLE_UBSAN "Whether to enable undefined behavior sanitizer" OFF)
 option(CM_ENABLE_ASAN "Whether to enable address sanitizer" OFF)
 option(CM_ENABLE_SSE2 "Whether to enable SSE2 usage" OFF)
 option(CM_ENABLE_NATIVE "Whether to enable -march=native" OFF)
+option(CM_ENABLE_BENCHES "Whether to build the benchmarks" OFF)
 
 ## source
 
 set(cm_topdir "${CMAKE_CURRENT_SOURCE_DIR}")
+set(cm_benchesdir "${cm_topdir}/benches")
 set(cm_source "${cm_topdir}/cheesemap.c")
 
 ## library target
@@ -35,10 +38,9 @@ target_compile_definitions(cheesemap
     $<$<BOOL:${CM_ENABLE_SSE2}>:CM_ENABLE_SSE2=1>
 )
 
-target_compile_options(cheesemap 
-  PRIVATE 
+target_compile_options(cheesemap
+  PRIVATE
     -Wall -Wextra -Werror
-
     $<$<CONFIG:Debug>:-g3>
     $<$<BOOL:${CM_ENABLE_UBSAN}>:-fsanitize=undefined>
     $<$<BOOL:${CM_ENABLE_ASAN}>:-fsanitize=address>
@@ -53,6 +55,11 @@ set_target_properties(cheesemap PROPERTIES
   POSITION_INDEPENDENT_CODE ON
 )
 
+## Benches
+if(CM_ENABLE_BENCHES)
+  add_subdirectory("${cm_benchesdir}")
+endif()
+
 ## configuration summary
 
 message(STATUS "cheesemap configuration:")
@@ -61,3 +68,4 @@ message(STATUS "  CM_ENABLE_UBSAN: ${CM_ENABLE_UBSAN}")
 message(STATUS "  CM_ENABLE_ASAN: ${CM_ENABLE_ASAN}")
 message(STATUS "  CM_ENABLE_SSE2: ${CM_ENABLE_SSE2}")
 message(STATUS "  CM_ENABLE_NATIVE: ${CM_ENABLE_NATIVE}")
+message(STATUS "  CM_ENABLE_BENCHES: ${CM_ENABLE_BENCHES}")
