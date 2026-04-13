@@ -7,6 +7,9 @@
 
 #define CM_ATTR(...) __attribute__((__VA_ARGS__))
 
+#define cm_max(x, y) ((x) > (y) ? (x) : (y))
+#define cm_ispow2(x) ((x) != 0 && (((x) & ((x) - 1)) == 0))
+
 CM_ATTR(hot) static inline cm_usize cm_ctz(cm_usize val) {
   cm_assert(val != 0);
 #if UINTPTR_MAX == UINT64_MAX
@@ -60,9 +63,6 @@ CM_ATTR(hot) static inline cm_usize cm_bitmask_clz(bitmask_t mask) {
 #error "unknown group size"
 #endif
 }
-
-#define cm_max(x, y) ((x) > (y) ? (x) : (y))
-#define cm_ispow2(x) ((x) != 0 && (((x) & ((x) - 1)) == 0))
 
 static inline cm_usize cm_align_up(cm_usize value, cm_usize alignment) {
   cm_assert(cm_ispow2(alignment));
@@ -339,7 +339,6 @@ static bool cm_raw_find(const struct cheesemap_raw* map, cm_compare_fn compare,
     // EMPTY terminates the probe chain: if the key were present, insertion
     // would have placed it before the first EMPTY slot in the sequence.
     if (cm_group_match_empty(group) != 0) return false;
-
     cm_sequence_next(&seq, map->bucket_mask);
   }
 }
