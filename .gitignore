@@ -1,11 +1,4 @@
-**/build*/
-**/out*/
 *.o
 *.d
 *.json
-.cache/
-.venv/
-venv/
-__pycache__/
-*.pyc
-*.pyo
+
