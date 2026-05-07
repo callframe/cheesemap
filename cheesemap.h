@@ -1,5 +1,8 @@
+#include <assert.h>
 #include <limits.h>
+#include <stdbool.h>
 #include <stdint.h>
+#include <string.h>
 
 #if !defined(__GNUC__) && !defined(__clang__)
 #error "cheesemap requires a GNU-compatible compiler"
@@ -66,7 +69,7 @@ enum {
     CM_H2_MASK = 0x7F, // 0b0111_1111
     // Mask to get bottom bit
     CM_CTRL_END = 0x01, // 0b0000_0001
-    // Number of fingerprint bytes
+    // Number of fingerprint bits
     CM_FP_SIZE = 7,
     //
     // aux
@@ -83,6 +86,43 @@ cm_bitmask_t _cm_group_match_empty_or_deleted(cm_group_t group);
 cm_bitmask_t _cm_group_match_empty(cm_group_t group);
 cm_bitmask_t _cm_group_match_full(cm_group_t group);
 
+/* ---- Internal Methods ----------------------------------------------------- */
+
+#define _cm_max(a, b) ((a) > (b) ? (a) : (b))
+
+static inline bool _cm_ispow2(cm_usize x)
+{
+    return x != 0 && (x & (x - 1)) == 0;
+}
+
+static inline cm_usize _cm_clz(cm_usize x)
+{
+    assert(x != 0);
+#if UINTPTR_MAX == UINT64_MAX
+    return (cm_usize)__builtin_clzll(x);
+#elif UINTPTR_MAX == UINT32_MAX
+    return (cm_usize)__builtin_clz(x);
+#else
+#error "target platform is not supported"
+#endif
+}
+
+static inline cm_usize _cm_npow2(cm_usize v)
+{
+    if (v <= 1)
+        return 1;
+    return (cm_usize)1 << (CM_WORD_WIDTH - _cm_clz(v - 1));
+}
+
+static inline cm_usize _cm_alignup(cm_usize value, cm_usize alignment)
+{
+    assert(_cm_ispow2(alignment));
+    return (value + alignment - 1) & ~(alignment - 1);
+}
+
+void _cm_layout(cm_usize entry_size, cm_usize entry_align, cm_usize capacity, cm_usize* out_buckets, cm_usize* out_ctrl_offset, cm_usize* out_size);
+cm_usize _cm_buckets_to_capacity(cm_usize bucket_mask);
+
 /* ---- Macro helpers -------------------------------------------------------- */
 
 /* Internal name generation helpers. */
@@ -90,13 +130,26 @@ cm_bitmask_t _cm_group_match_full(cm_group_t group);
 #define _cm_member(_name, _member) _name##_##_member
 
 #define _cm_entry_type(_name) struct _cm_member(_name, entry)
+#define _cm_iter_type(_name) struct _cm_member(_name, iter)
+
+/* Internal type generation helpers. */
 
 #define _cm_entry(_name, _k, _v) \
     _cm_entry_type(_name)        \
     {                            \
         _k key;                  \
         _v value;                \
-    };
+    }
+
+#define _cm_iter(_name)         \
+    _cm_iter_type(_name)        \
+    {                           \
+        cm_bitmask_t curr_mask; \
+        cm_usize curr_idx;      \
+        cm_u8* n_ctrl;          \
+        cm_u8* n_entry;         \
+        cm_u8* ctrl_end;        \
+    }
 
 #define _cm_hash_fn(_name) _cm_member(_name, hash_fn)
 #define _cm_hash_fn_type(_name, _k) typedef cm_hash_t (*_cm_hash_fn(_name))(_k key)
@@ -122,13 +175,16 @@ cm_bitmask_t _cm_group_match_full(cm_group_t group);
     _cm_entry(_name, _k, _v);                                                                                                  \
     _cm_hash_fn_type(_name, _k);                                                                                               \
     _cm_compare_fn_type(_name, _k);                                                                                            \
+    _cm_iter(_name);                                                                                                           \
+                                                                                                                               \
     _cm_type(_name)                                                                                                            \
     {                                                                                                                          \
         cm_u8* ctrl;                                                                                                           \
         cm_usize growth_left;                                                                                                  \
         cm_usize count;                                                                                                        \
-        cm_usize cap_mask;                                                                                                     \
+        cm_usize bucket_mask;                                                                                                  \
     };                                                                                                                         \
+                                                                                                                               \
     static inline _cm_type(_name) _cm_member(_name, new)(void) { return (_cm_type(_name)) { .ctrl = (cm_u8*)CM_CTRL_EMPTY }; } \
     _cm_type(_name) _cm_member(_name, with_capacity)(cm_usize capacity);                                                       \
     bool _cm_member(_name, reserve)(_cm_type(_name) * map, cm_usize additional);                                               \
@@ -148,7 +204,47 @@ cm_bitmask_t _cm_group_match_full(cm_group_t group);
  * @param[in] _v Value type.
  * @param[in] _hash Hash function for `_k`.
  * @param[in] _compare Equality comparison function for `_k`.
- * @param[in] _alloc Allocation function.
- * @param[in] _dealloc Deallocation function.
  */
-#define cheesemap_impl(_name, _k, _v, _hash, _compare, _alloc, _dealloc)
+#define cheesemap_impl(_name, _k, _v, _hash, _compare)                                                                           \
+    static void _cm_member(_name, rehash)(cm_u8 * old_ctrl, cm_u8 * new_ctrl)                                                    \
+    {                                                                                                                            \
+    }                                                                                                                            \
+    static bool _cm_member(_name, resize)(_cm_type(_name) * map, cm_usize new_capacity)                                          \
+    {                                                                                                                            \
+        assert(_cm_ispow2(new_capacity) == true);                                                                                \
+                                                                                                                                 \
+        cm_usize buckets, ctrl_offset, size;                                                                                     \
+        _cm_layout(sizeof(_cm_entry_type(_name)), _Alignof(_cm_entry_type(_name)), new_capacity, &buckets, &ctrl_offset, &size); \
+                                                                                                                                 \
+        cm_u8* new_ctrl = (cm_u8*)aligned_alloc(_Alignof(_cm_entry_type(_name)), size);                                          \
+        if (new_ctrl == NULL)                                                                                                    \
+            return false;                                                                                                        \
+                                                                                                                                 \
+        memset(new_ctrl, CM_CTRL_EMPTY, buckets);                                                                                \
+        memcpy(new_ctrl + buckets, new_ctrl, CM_GROUP_SIZE);                                                                     \
+                                                                                                                                 \
+        _cm_member(_name, rehash)(map->ctrl, new_ctrl);                                                                          \
+        free(map->ctrl);                                                                                                         \
+                                                                                                                                 \
+        map->ctrl = new_ctrl;                                                                                                    \
+        map->bucket_mask = buckets - 1;                                                                                          \
+        map->growth_left = _cm_buckets_to_capacity(map->bucket_mask) - map->count;                                               \
+        return true;                                                                                                             \
+    }                                                                                                                            \
+    bool _cm_member(_name, reserve)(_cm_type(_name) * map, cm_usize additional)                                                  \
+    {                                                                                                                            \
+        if (map->growth_left >= additional)                                                                                      \
+            return true;                                                                                                         \
+        /* TODO: replace rehash */                                                                                               \
+        cm_usize min_capacity = map->count + additional;                                                                         \
+        cm_usize curr_capacity = _cm_buckets_to_capacity(map->bucket_mask);                                                      \
+        cm_usize new_capacity = _cm_max(curr_capacity + 1, min_capacity);                                                        \
+        return _cm_member(_name, resize)(map, new_capacity);                                                                     \
+    }                                                                                                                            \
+    _cm_type(_name) _cm_member(_name, with_capacity)(cm_usize capacity)                                                          \
+    {                                                                                                                            \
+        _cm_type(_name) map = _cm_member(_name, new)();                                                                          \
+        if (_cm_member(_name, reserve)(&map, capacity) == false)                                                                 \
+            return _cm_member(_name, new)();                                                                                     \
+        return map;                                                                                                              \
+    }

@@ -83,3 +83,40 @@ cm_bitmask_t _cm_group_match_tag(cm_group_t group, cm_u8 tag)
     return (cmp - cm_group_repeat(CM_CTRL_END)) & ~cmp & cm_group_repeat(CM_CTRL_DELETED);
 }
 #endif
+
+/* ============================================================================
+ * Internal Methods
+ * ========================================================================== */
+
+static inline cm_usize _cm_capacity_to_buckets(cm_usize capacity)
+{
+    cm_usize min_buckets = (capacity * CM_LOAD_DENOM + CM_LOAD_NUM - 1) / CM_LOAD_NUM;
+    cm_usize buckets = _cm_npow2(min_buckets);
+    return _cm_max(buckets, CM_GROUP_SIZE);
+}
+
+cm_usize _cm_buckets_to_capacity(cm_usize bucket_mask)
+{
+    cm_usize num_buckets = bucket_mask + 1;
+    return (num_buckets / CM_LOAD_DENOM) * CM_LOAD_NUM;
+}
+
+static inline cm_usize _cm_ctrl_offset(cm_usize buckets, cm_usize entry_size)
+{
+    cm_usize offset = entry_size * buckets;
+    cm_usize ctrl_align = _cm_max(entry_size, CM_GROUP_SIZE);
+    return _cm_alignup(offset, ctrl_align);
+}
+
+void _cm_layout(cm_usize entry_size, cm_usize entry_align, cm_usize capacity, cm_usize* out_buckets, cm_usize* out_ctrl_offset, cm_usize* out_size)
+{
+    cm_usize buckets = _cm_capacity_to_buckets(capacity);
+    cm_usize ctrl_offset = _cm_ctrl_offset(buckets, entry_size);
+
+    cm_usize size = ctrl_offset + buckets + CM_GROUP_SIZE;
+    size = _cm_alignup(size, entry_align);
+
+    *out_buckets = buckets;
+    *out_ctrl_offset = ctrl_offset;
+    *out_size = size;
+}
