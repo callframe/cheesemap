@@ -95,7 +95,6 @@ enum {
   // aux
   // Size of a word in bits
   CM_WORD_WIDTH = sizeof(cm_usize) * CHAR_BIT,
-
 };
 
 extern const cm_u8 CM_CTRL_STATIC_EMPTY[CM_GROUP_SIZE];
