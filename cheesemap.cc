@@ -587,6 +587,10 @@ static bool cheesemap_reserve(Cheesemap<CM_TEMPLATE_USE>& map, cm_usize addition
     cm_usize total_capacity = cm_bucket_mask_to_capacity(map.bucket_mask);
     // TODO: check for rehash if we have plenty of space left
 
+    if (min_capacity <= total_capacity) {
+        return true;
+    }
+
     return cheesemap_resize(map, CM_MAX(min_capacity, total_capacity + 1));
 }
 
