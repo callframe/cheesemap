@@ -21,6 +21,7 @@ cm_u8* Alloc(cm_usize size, cm_usize align)
 
 void Dealloc(cm_u8* ptr, cm_usize size, cm_usize align)
 {
+    (void)size;
     operator delete(ptr, std::align_val_t(align));
 }
 

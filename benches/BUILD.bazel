@@ -9,7 +9,7 @@ cc_binary(
         "cheesemap_bench.cc",
         "common.h",
     ],
-    copts = BENCH_COPTS,
+    copts = BENCH_COPTS + ['-Wall', '-Wextra', '-Werror'],
     deps = BENCH_DEPS + ["//:cheesemap"],
     visibility = ["//visibility:public"],
 )
