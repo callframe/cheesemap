@@ -704,3 +704,34 @@ bool cheesemap_remove(Cheesemap<CM_TEMPLATE_USE>& map, K key)
     map.count -= 1;
     return true;
 }
+
+/**
+ *
+ * Iterate Cheesemap entries
+ */
+
+CM_TEMPLATE
+struct Cheesemap_Iter {
+    Cheesemap_Full_Iter full_iter;
+    Cheesemap<CM_TEMPLATE_USE>& map;
+};
+
+CM_TEMPLATE
+Cheesemap_Iter<CM_TEMPLATE_USE> cm_iter_new(Cheesemap<CM_TEMPLATE_USE>& map)
+{
+    return Cheesemap_Iter { cm_full_iter_new(map.ctrl, map.count), map };
+}
+
+CM_TEMPLATE
+bool cm_iter_next(Cheesemap_Iter<CM_TEMPLATE_USE>& iter, K& out_key, V& out_value)
+{
+    cm_usize offset;
+    if (!cm_full_iter_next(iter.full_iter, offset)) {
+        return false;
+    }
+
+    auto entry = cheesemap_entry_at(iter.map, offset);
+    out_key = entry->key;
+    out_value = entry->value;
+    return true;
+}
