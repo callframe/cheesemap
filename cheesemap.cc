@@ -3,7 +3,6 @@
 #include <assert.h>
 #include <limits.h>
 #include <stdint.h>
-#include <stdlib.h>
 #include <string.h>
 #include <type_traits>
 
@@ -49,6 +48,9 @@ using Cheesemap_Hash = cm_hash (*)(K key);
 
 template <typename K>
 using Cheesemap_Compare = bool (*)(K key0, K key1);
+
+using Cheesemap_Alloc = cm_u8* (*)(cm_usize size, cm_usize align);
+using Cheesemap_Dealloc = void (*)(cm_u8* ptr, cm_usize size, cm_usize align);
 
 /**
  *
@@ -316,25 +318,6 @@ inline bool cm_bitmask_iter_next(Cheesemap_Bitmask_Iter& iter, cm_usize& out_ind
 
 /**
  *
- * Template parameter macros used to keep the public and internal function
- * signatures short.
- *
- * K: key type
- * V: value type
- * Hash: function pointer that hashes a key
- * Compare: function pointer that compares two keys for equality
- */
-
-#define CM_TEMPLATE             \
-    template <                  \
-        typename K,             \
-        typename V,             \
-        Cheesemap_Hash<K> Hash, \
-        Cheesemap_Compare<K> Compare>
-#define CM_TEMPLATE_USE K, V, Hash, Compare
-
-/**
- *
  * Cheesemap_Full_Iter walks buckets whose control bytes are FULL.
  * Each step returns the bucket index for one occupied entry.
  */
@@ -434,6 +417,26 @@ Cheesemap_Entry<K, V> cm_entry_new(K key, V value)
 
 /**
  *
+ * Template parameter macros used to keep the public and internal function
+ * signatures short.
+ *
+ * K: key type
+ * V: value type
+ * Hash: function pointer that hashes a key
+ * Compare: function pointer that compares two keys for equality
+ */
+
+#define CM_TEMPLATE                   \
+    template <                        \
+        typename K,                   \
+        typename V,                   \
+        Cheesemap_Hash<K> Hash,       \
+        Cheesemap_Compare<K> Compare, \
+        Cheesemap_Alloc Alloc,        \
+        Cheesemap_Dealloc Dealloc>
+#define CM_TEMPLATE_USE K, V, Hash, Compare, Alloc, Dealloc
+/**
+ *
  * Cheesemap is a Swiss-table-style hash map.
  *
  * The map stores keys and values in a contiguous entry array and keeps probing
@@ -494,7 +497,8 @@ bool cheesemap_new_with(Cheesemap<CM_TEMPLATE_USE>& map, cm_usize init_capacity)
     cm_usize total_size = cheesemap_layout_for<CM_TEMPLATE_USE>(num_buckets, ctrl_offset);
 
     assert(total_size % alignof(CM_ENTRY_USE) == 0);
-    cm_u8* entries = static_cast<cm_u8*>(aligned_alloc(alignof(CM_ENTRY_USE), total_size));
+
+    cm_u8* entries = Alloc(total_size, alignof(CM_ENTRY_USE));
     if (entries == NULL) {
         return false;
     }
@@ -514,10 +518,10 @@ void cheesemap_drop(Cheesemap<CM_TEMPLATE_USE>& map)
         return;
 
     cm_usize ctrl_offset;
-    cheesemap_layout_for<CM_TEMPLATE_USE>(map.bucket_mask + 1, ctrl_offset);
+    cm_usize total_size = cheesemap_layout_for<CM_TEMPLATE_USE>(map.bucket_mask + 1, ctrl_offset);
 
     cm_u8* entries = map.ctrl - ctrl_offset;
-    free(entries);
+    Dealloc(entries, total_size, alignof(CM_ENTRY_USE));
     map = cheesemap_new<CM_TEMPLATE_USE>();
 }
 
