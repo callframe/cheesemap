@@ -1,0 +1,6 @@
+[submodule "benches/gbench"]
+	path = benches/gbench
+	url = https://github.com/google/benchmark.git
+[submodule "benches/abseil"]
+	path = benches/abseil
+	url = https://github.com/abseil/abseil-cpp.git
