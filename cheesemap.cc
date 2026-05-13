@@ -179,6 +179,11 @@ static inline cm_u32 cm_trailing_zeros(cm_usize x)
 #endif
 }
 
+static inline cm_u32 cm_bitmask_trailing_zeros(cm_bitmask mask)
+{
+    return cm_trailing_zeros(mask) / CM_BITMASK_STRIDE;
+}
+
 /**
  *
  * Return the number of leading zeros
@@ -278,7 +283,7 @@ static inline bool cm_bitmask_iter_next(Cheesemap_Bitmask_Iter& iter, cm_usize& 
     if (iter == 0)
         return false;
 
-    cm_usize bit = cm_trailing_zeros(iter);
+    cm_usize bit = cm_bitmask_trailing_zeros(iter);
     iter &= (iter - 1);
     out_index = bit;
 
@@ -477,7 +482,7 @@ static bool cheesemap_find_insert_index_in_group(const Cheesemap<CM_TEMPLATE_USE
     if (mask == 0)
         return false;
 
-    cm_usize lowest = cm_trailing_zeros(mask) / CM_BITMASK_STRIDE;
+    cm_usize lowest = cm_bitmask_trailing_zeros(mask);
     offset = (seq.pos + lowest) & map.bucket_mask;
     return true;
 }
@@ -599,7 +604,7 @@ static bool cheesemap_find(const Cheesemap<CM_TEMPLATE_USE>& map, K key, cm_usiz
 
         cm_bitmask match_mask = cm_group_match_tag(group, h2);
         while (match_mask != 0) {
-            cm_usize bit = cm_trailing_zeros(match_mask) / CM_BITMASK_STRIDE;
+            cm_usize bit = cm_bitmask_trailing_zeros(match_mask);
             cm_usize index = (seq.pos + bit) & map.bucket_mask;
 
             auto entry = cheesemap_entry_at(map, index);
@@ -669,23 +674,22 @@ CM_TEMPLATE
 bool cheesemap_remove(Cheesemap<CM_TEMPLATE_USE>& map, K key)
 {
     cm_hash hash = Hash(key);
-
     cm_usize index;
     if (!cheesemap_find(map, key, cm_h1(hash), cm_h2(hash), index)) {
         return false;
     }
-
     cm_usize index_before = (index - CM_GROUP_SIZE) & map.bucket_mask;
 
-    // TODO: add documentation
-
+    // We can't just mark the slot EMPTY: find() stops probing at EMPTY, so if this slot
+    // was part of a full probe chain, lookups for keys displaced past it would wrongly
+    // terminate here. So we check the bytes around `index`: if there's an EMPTY nearby
+    // (within one group), find() was going to stop there anyway and we can safely mark
+    // this slot EMPTY too. Otherwise we must mark it DELETED so probing continues past it.
     cm_group group_before = cm_group_load(cheesemap_ctrl_at(map, index_before));
     cm_group group_after = cm_group_load(cheesemap_ctrl_at(map, index));
-
     cm_bitmask empty_before = cm_group_match_empty(group_before);
     cm_bitmask empty_after = cm_group_match_empty(group_after);
 
-    // If there is atleast one EMPTY around then find will already terminate at that which means our can also be clear
     cm_usize num_zeros = cm_leading_zeros(empty_before) + cm_trailing_zeros(empty_after);
     if (num_zeros >= CM_GROUP_SIZE) {
         cheesemap_set_ctrl(map, index, CM_CTRL_DELETED);
@@ -693,7 +697,6 @@ bool cheesemap_remove(Cheesemap<CM_TEMPLATE_USE>& map, K key)
         cheesemap_set_ctrl(map, index, CM_CTRL_EMPTY);
         map.growth_left += 1;
     }
-
     map.count -= 1;
     return true;
 }
