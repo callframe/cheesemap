@@ -4,7 +4,6 @@
 #include <limits.h>
 #include <stdint.h>
 #include <string.h>
-#include <type_traits>
 
 #if !defined(__cplusplus)
 #error "Cheesemap requires C++"
@@ -437,6 +436,7 @@ Cheesemap_Entry<K, V> cm_entry_new(K key, V value)
         Cheesemap_Alloc Alloc,        \
         Cheesemap_Dealloc Dealloc>
 #define CM_TEMPLATE_USE K, V, Hash, Compare, Alloc, Dealloc
+
 /**
  *
  * Cheesemap is a Swiss-table-style hash map.
@@ -447,9 +447,6 @@ Cheesemap_Entry<K, V> cm_entry_new(K key, V value)
  */
 
 CM_TEMPLATE struct Cheesemap {
-    static_assert(std::is_trivial<K>::value == true, "Type K must be trivial");
-    static_assert(std::is_trivial<V>::value == true, "Type V must be trivial");
-
     cm_usize growth_left;
     cm_usize count;
     cm_usize bucket_mask;
@@ -527,7 +524,6 @@ void cheesemap_drop(Cheesemap<CM_TEMPLATE_USE>& map)
     map = cheesemap_new<CM_TEMPLATE_USE>();
 }
 
-// TODO: check whether inline improves performance
 CM_TEMPLATE
 bool cheesemap_find_insert_index_in_group(const Cheesemap<CM_TEMPLATE_USE>& map, cm_group group,
     const Cheesemap_Probe_Sequence& seq, cm_usize& offset)
@@ -548,7 +544,6 @@ cm_u8* cheesemap_ctrl_at(const Cheesemap<CM_TEMPLATE_USE>& map, cm_usize index)
     return map.ctrl + index;
 }
 
-// TODO: check whether inline improves performance
 CM_TEMPLATE
 cm_usize cheesemap_find_insert_index(const Cheesemap<CM_TEMPLATE_USE>& map, cm_usize h1)
 {
@@ -575,8 +570,6 @@ CM_ENTRY_USE* cheesemap_entry_at(const Cheesemap<CM_TEMPLATE_USE>& map, cm_usize
 {
     assert(map.bucket_mask != 0);
     assert(index < map.bucket_mask + 1);
-
-    // TODO: handle zero sized entries
 
     auto end = reinterpret_cast<CM_ENTRY_USE*>(map.ctrl);
     return end - index - 1;
@@ -682,7 +675,6 @@ bool cheesemap_find(const Cheesemap<CM_TEMPLATE_USE>& map, K key, cm_usize h1, c
     }
 }
 
-// TODO: eval if inlining improves performance
 CM_TEMPLATE
 bool cheesemap_lookup(const Cheesemap<CM_TEMPLATE_USE>& map, K key, V& out_value)
 {
@@ -761,7 +753,7 @@ bool cheesemap_remove(Cheesemap<CM_TEMPLATE_USE>& map, K key)
 
 /**
  *
- * Public iterator for occupied Cheesemap entries.
+ * Iterator for occupied Cheesemap entries.
  *
  * Iteration follows bucket order, skipping EMPTY and DELETED slots. Each call
  * to cm_iter_next returns pointers to the stored key and value. The key pointer
@@ -785,6 +777,7 @@ CM_TEMPLATE
 bool cm_iter_next(Cheesemap_Iter<CM_TEMPLATE_USE>& iter, K const*& out_key, V*& out_value)
 {
     cm_usize offset;
+
     if (!cm_full_iter_next(iter.full_iter, offset)) {
         return false;
     }
@@ -792,5 +785,118 @@ bool cm_iter_next(Cheesemap_Iter<CM_TEMPLATE_USE>& iter, K const*& out_key, V*& 
     auto entry = cheesemap_entry_at(iter.map, offset);
     out_key = &entry->key;
     out_value = &entry->value;
+
+    return true;
+}
+
+/**
+ *
+ * Template parameter macros used to keep the public Cheeseset function
+ * signatures short.
+ *
+ * K: key type
+ * Hash: function pointer that hashes a key
+ * Compare: function pointer that compares two keys for equality
+ * Alloc: function pointer that allocates memory for the set
+ * Dealloc: function pointer that deallocates memory for the set
+ */
+
+#define CM_CS_TEMPLATE                \
+    template <                        \
+        typename K,                   \
+        Cheesemap_Hash<K> Hash,       \
+        Cheesemap_Compare<K> Compare, \
+        Cheesemap_Alloc Alloc,        \
+        Cheesemap_Dealloc Dealloc>
+#define CM_CS_TEMPLATE_USE K, Hash, Compare, Alloc, Dealloc
+
+struct Cheeseset_Unit { };
+static_assert(sizeof(Cheeseset_Unit) == 1, "Cheeseset_Unit must be exactly one byte");
+
+#define CM_CS_INNER_TEMPLATE_USE K, Cheeseset_Unit, Hash, Compare, Alloc, Dealloc
+
+/**
+ *
+ * Cheeseset is a Swiss-table-style hash set backed by Cheesemap.
+ *
+ * The set stores keys in the backing map and uses Cheeseset_Unit as the value.
+ * This gives Cheeseset the same probing, allocation, resizing, and removal
+ * behavior as Cheesemap while exposing only membership operations.
+ */
+
+CM_CS_TEMPLATE
+struct Cheeseset {
+    Cheesemap<CM_CS_INNER_TEMPLATE_USE> map;
+};
+
+CM_CS_TEMPLATE
+Cheeseset<CM_CS_TEMPLATE_USE> cheeseset_new()
+{
+    return Cheeseset<CM_CS_TEMPLATE_USE> { cheesemap_new<CM_CS_INNER_TEMPLATE_USE>() };
+}
+
+CM_CS_TEMPLATE
+bool cheeseset_new_with(Cheeseset<CM_CS_TEMPLATE_USE>& set, cm_usize init_capacity)
+{
+    return cheesemap_new_with(set.map, init_capacity);
+}
+
+CM_CS_TEMPLATE
+void cheeseset_drop(Cheeseset<CM_CS_TEMPLATE_USE>& set)
+{
+    cheesemap_drop(set.map);
+}
+
+CM_CS_TEMPLATE
+bool cheeseset_insert(Cheeseset<CM_CS_TEMPLATE_USE>& set, K key)
+{
+    return cheesemap_insert(set.map, key, Cheeseset_Unit { });
+}
+
+CM_CS_TEMPLATE
+bool cheeseset_lookup(const Cheeseset<CM_CS_TEMPLATE_USE>& set, K key)
+{
+    Cheeseset_Unit unit;
+    return cheesemap_lookup(set.map, key, unit);
+}
+
+CM_CS_TEMPLATE
+bool cheeseset_remove(Cheeseset<CM_CS_TEMPLATE_USE>& set, K key)
+{
+    return cheesemap_remove(set.map, key);
+}
+
+/**
+ *
+ * Iterator for occupied Cheeseset entries.
+ *
+ * Iteration follows bucket order, skipping EMPTY and DELETED slots. Each call
+ * to cheeseset_iter_next returns a pointer to the stored key. The key pointer
+ * is const because changing a key in place would break the table's hash
+ * invariant.
+ */
+
+CM_CS_TEMPLATE
+struct Cheeseset_Iter {
+    Cheesemap_Iter<CM_CS_INNER_TEMPLATE_USE> map_iter;
+};
+
+CM_CS_TEMPLATE
+Cheeseset_Iter<CM_CS_TEMPLATE_USE> cheeseset_iter_new(Cheeseset<CM_CS_TEMPLATE_USE>& set)
+{
+    return Cheeseset_Iter { cm_iter_new(set.map) };
+}
+
+CM_CS_TEMPLATE
+bool cheeseset_iter_next(Cheeseset_Iter<CM_CS_TEMPLATE_USE>& iter, K const*& out_key)
+{
+    K const* key;
+    Cheeseset_Unit* value;
+
+    if (!cm_iter_next(iter.map_iter, key, value)) {
+        return false;
+    }
+
+    out_key = key;
     return true;
 }
