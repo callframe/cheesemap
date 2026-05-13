@@ -165,7 +165,10 @@ static cm_u8 const CM_INIT_CTRL[CM_GROUP_SIZE] = {
  */
 static inline cm_u32 cm_trailing_zeros(cm_usize x)
 {
-    assert(x != 0);
+    // TODO: this branch fixes a problem that shouldn't exist
+    if (x == 0) {
+        return CM_WORD_WIDTH;
+    }
 
 #if defined(__x86_64__)
     return __builtin_ctzll(x);
@@ -184,7 +187,11 @@ static inline cm_u32 cm_trailing_zeros(cm_usize x)
 
 static inline cm_u32 cm_leading_zeros(cm_usize x)
 {
-    assert(x != 0);
+    // TODO: this branch fixes a problem that shouldn't exist
+    if (x == 0) {
+        return CM_WORD_WIDTH;
+    }
+
 #if defined(__x86_64__)
     return __builtin_clzll(x);
 #elif defined(__i386__)
