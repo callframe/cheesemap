@@ -15,7 +15,7 @@ set(CM_SOURCE "${CM_DIR}/cheesemap.cc")
 add_library(${CM} INTERFACE ${CM_SOURCE})
 
 target_include_directories(${CM} INTERFACE ${CMAKE_CURRENT_SOURCE_DIR})
-target_compile_features(${CM} INTERFACE std_cxx_17)
+target_compile_features(${CM} INTERFACE cxx_std_17)
 
 if(CM_BUILD_BENCHES)
     set(BENCHES_DIR "${CM_DIR}/benches")
