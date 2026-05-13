@@ -7,6 +7,18 @@
 #include <string.h>
 #include <type_traits>
 
+#if !defined(__cplusplus)
+#error "Cheesemap requires C++"
+#endif
+
+#if __cplusplus < 201703L
+#error "Cheesemap requires C++17 or later"
+#endif
+
+#if defined(_MSC_VER)
+#error "MSVC is not yet supported. Open an Issue if you need this."
+#endif
+
 /**
  *
  * Cheesemap types
