@@ -424,6 +424,8 @@ Cheesemap_Entry<K, V> cm_entry_new(K key, V value)
  * V: value type
  * Hash: function pointer that hashes a key
  * Compare: function pointer that compares two keys for equality
+ * Alloc: function pointer that allocates memory for the map
+ * Dealloc: function pointer that deallocates memory for the map
  */
 
 #define CM_TEMPLATE                   \
