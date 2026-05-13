@@ -3,7 +3,7 @@
 #include <cstdlib>
 
 extern "C" {
-#include "khash.h"
+#include "klib/khash.h"
 }
 
 static inline khint_t BenchKhashHash(khint64_t key)

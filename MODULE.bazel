@@ -1,3 +1,10 @@
 module(name = "cheesemap")
 
 bazel_dep(name = "rules_cc", version = "0.2.18")
+bazel_dep(name = "platforms", version = "1.1.0", dev_dependency = True)
+bazel_dep(name = "abseil-cpp", dev_dependency = True)
+
+local_path_override(
+    module_name = "abseil-cpp",
+    path = "benches/abseil",
+)

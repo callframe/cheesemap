@@ -1,0 +1,10 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+cc_library(
+    name = "cheesemap_old",
+    srcs = ["cheesemap.c"],
+    hdrs = ["cheesemap.h"],
+    copts = ["-std=c11"],
+    includes = ["."],
+    visibility = ["//visibility:public"],
+)

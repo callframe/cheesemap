@@ -1,0 +1,49 @@
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+BENCH_COPTS = ["-std=c++17"]
+BENCH_DEPS = ["//benches/gbench:benchmark_main"]
+
+cc_binary(
+    name = "cheesemap_bench",
+    srcs = [
+        "cheesemap_bench.cc",
+        "common.h",
+    ],
+    copts = BENCH_COPTS,
+    deps = BENCH_DEPS + ["//:cheesemap"],
+    visibility = ["//visibility:public"],
+)
+
+cc_binary(
+    name = "cheesemap_old_bench",
+    srcs = [
+        "cheesemap_old_bench.cc",
+        "common.h",
+    ],
+    copts = BENCH_COPTS,
+    deps = BENCH_DEPS + ["//benches/cheesemap_old"],
+    visibility = ["//visibility:public"],
+)
+
+cc_binary(
+    name = "abseil_bench",
+    srcs = [
+        "abseil_bench.cc",
+        "common.h",
+    ],
+    copts = BENCH_COPTS,
+    deps = BENCH_DEPS + ["@abseil-cpp//absl/container:flat_hash_map"],
+    visibility = ["//visibility:public"],
+)
+
+cc_binary(
+    name = "khash_bench",
+    srcs = [
+        "khash_bench.cc",
+        "common.h",
+        "klib/khash.h",
+    ],
+    copts = BENCH_COPTS,
+    deps = BENCH_DEPS,
+    visibility = ["//visibility:public"],
+)
