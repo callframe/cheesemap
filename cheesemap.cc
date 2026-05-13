@@ -40,7 +40,14 @@ using Cheesemap_Compare = bool (*)(K key0, K key1);
 
 /**
  *
- * CTRL operations
+ * Control-byte encoding.
+ *
+ * Each bucket has one control byte. EMPTY and DELETED are special states with
+ * the high bit set. FULL buckets store the 7-bit H2 hash fingerprint with the
+ * high bit clear, which lets group matching test many buckets at once.
+ *
+ * The control array also stores a cloned prefix of CM_GROUP_SIZE bytes after
+ * the real buckets, so group loads can wrap around the end of the table.
  */
 
 enum : cm_u8 {
@@ -297,11 +304,13 @@ static inline bool cm_bitmask_iter_next(Cheesemap_Bitmask_Iter& iter, cm_usize& 
 
 /**
  *
- * Cheesemap template macros
- * K: represents the Key type
- * V: represents the Value type
- * Hash: represents a function pointer to hash a K
- * Compare: represents a function pointer to compare 2 K's
+ * Template parameter macros used to keep the public and internal function
+ * signatures short.
+ *
+ * K: key type
+ * V: value type
+ * Hash: function pointer that hashes a key
+ * Compare: function pointer that compares two keys for equality
  */
 
 #define CM_TEMPLATE             \
@@ -413,7 +422,11 @@ static inline Cheesemap_Entry<K, V> cm_entry_new(K key, V value)
 
 /**
  *
- * Cheesemap is a Swiss-Table like Hashmap
+ * Cheesemap is a Swiss-table-style hash map.
+ *
+ * The map stores keys and values in a contiguous entry array and keeps probing
+ * metadata in a separate control-byte array. `growth_left` tracks how many
+ * more empty buckets may be filled before the table must grow.
  */
 
 CM_TEMPLATE struct Cheesemap {
@@ -729,7 +742,12 @@ bool cheesemap_remove(Cheesemap<CM_TEMPLATE_USE>& map, K key)
 
 /**
  *
- * Iterate Cheesemap entries
+ * Public iterator for occupied Cheesemap entries.
+ *
+ * Iteration follows bucket order, skipping EMPTY and DELETED slots. Each call
+ * to cm_iter_next returns pointers to the stored key and value. The key pointer
+ * is const because changing a key in place would break the table's hash
+ * invariant.
  */
 
 CM_TEMPLATE
@@ -745,7 +763,7 @@ Cheesemap_Iter<CM_TEMPLATE_USE> cm_iter_new(Cheesemap<CM_TEMPLATE_USE>& map)
 }
 
 CM_TEMPLATE
-bool cm_iter_next(Cheesemap_Iter<CM_TEMPLATE_USE>& iter, K& out_key, V& out_value)
+bool cm_iter_next(Cheesemap_Iter<CM_TEMPLATE_USE>& iter, K const*& out_key, V*& out_value)
 {
     cm_usize offset;
     if (!cm_full_iter_next(iter.full_iter, offset)) {
@@ -753,7 +771,7 @@ bool cm_iter_next(Cheesemap_Iter<CM_TEMPLATE_USE>& iter, K& out_key, V& out_valu
     }
 
     auto entry = cheesemap_entry_at(iter.map, offset);
-    out_key = entry->key;
-    out_value = entry->value;
+    out_key = &entry->key;
+    out_value = &entry->value;
     return true;
 }
