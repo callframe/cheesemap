@@ -131,11 +131,12 @@ static inline cm_bitmask cm_group_match_tag(cm_group group, cm_u8 tag)
 
 /**
  *
- * Initial CTRL block for all uninited map's
- * It is used to normalize behavior between uninited map's and map's that need to grow.
- * The trick is that on insert's we don't check whether the current ctrl is nullptr,
- * instead we check whether the found ctrl is EMPTY and the map has no more space to grow
- * this means we need to resize
+ * Initial control block for uninitialized maps.
+ *
+ * This normalizes behavior between an uninitialized map and a map that has
+ * allocated storage but needs to grow. Inserts do not special-case a null
+ * control pointer. Instead, they probe this all-EMPTY block, notice that the
+ * map has no growth left, and resize before writing.
  */
 
 #define CM_MAX(a, b) ((a) > (b) ? (a) : (b))
@@ -160,8 +161,8 @@ static cm_u8 const CM_INIT_CTRL[CM_GROUP_SIZE] = {
 
 /**
  *
- * Return the number of trailing zeros
- * Assume's x is NOT zero
+ * Return the number of trailing zero bits.
+ * Returns CM_WORD_WIDTH when x is zero.
  */
 static inline cm_u32 cm_trailing_zeros(cm_usize x)
 {
@@ -186,8 +187,8 @@ static inline cm_u32 cm_bitmask_trailing_zeros(cm_bitmask mask)
 
 /**
  *
- * Return the number of leading zeros
- * Assume's x is NOT zero
+ * Return the number of leading zero bits.
+ * Returns CM_WORD_WIDTH when x is zero.
  */
 
 static inline cm_u32 cm_leading_zeros(cm_usize x)
@@ -221,6 +222,9 @@ static inline cm_usize cm_next_pow2(cm_usize x)
 
 static inline cm_usize cm_bucket_mask_to_capacity(cm_usize bucket_mask)
 {
+    // Capacity is the maximum number of full buckets allowed before growth.
+    // Cheesemap keeps at least 1/8 of the buckets empty, so capacity is 7/8
+    // of the bucket count.
     return ((bucket_mask + 1) / CM_LOAD_DENOM) * CM_LOAD_NUM;
 }
 
@@ -233,14 +237,15 @@ static inline cm_usize cm_alignup(cm_usize x, cm_usize align)
 static inline cm_usize cm_capacity_to_bucket(cm_usize capacity)
 {
 
-    // We require 1/8 load factor, so we need 8 buckets per item
+    // Choose enough buckets to hold `capacity` items at a 7/8 max load factor.
     cm_usize adjusted_capacity = capacity * CM_LOAD_DENOM / CM_LOAD_NUM;
     return CM_MAX(cm_next_pow2(adjusted_capacity), CM_GROUP_SIZE);
 }
 
 [[maybe_unused]] static inline bool cm_is_special(cm_u8 tag)
 {
-    // TODO: add documentation
+    // Returns true for special control bytes, which have their high bit set.
+    // EMPTY and DELETED are special; FULL control bytes are not.
     return (tag & CM_CTRL_DELETED) != 0;
 }
 
@@ -272,8 +277,8 @@ static inline cm_u8 cm_h2(cm_hash hash)
 
 /**
  *
- * Cheesemap_Bitmask_Iter iterates a Bitmask until there is nothing left
- * Pop of the next lowest bit of a bitmask
+ * Cheesemap_Bitmask_Iter walks the set bits in a bitmask.
+ * Each step returns the lowest set bit and clears it from the iterator.
  */
 
 typedef cm_bitmask Cheesemap_Bitmask_Iter;
@@ -309,8 +314,8 @@ static inline bool cm_bitmask_iter_next(Cheesemap_Bitmask_Iter& iter, cm_usize& 
 
 /**
  *
- * Cheesemap_Full_Iter is an iterate that iterates over full buckets
- * Returns a bucket offset if not at end of map
+ * Cheesemap_Full_Iter walks buckets whose control bytes are FULL.
+ * Each step returns the bucket index for one occupied entry.
  */
 
 struct Cheesemap_Full_Iter {
@@ -358,9 +363,9 @@ static inline bool cm_full_iter_next(Cheesemap_Full_Iter& iter, cm_usize& out_of
 
 /**
  *
- * Iterate probe sequences with triangular numbers,
- * which is garanteed to visit every group exactly once,
- * due to the fact that our table is always a power of 2 in size
+ * Probe sequences advance by triangular numbers over control groups.
+ * Because the table size is always a power of two, this visits every group
+ * before repeating.
  */
 
 struct Cheesemap_Probe_Sequence {
@@ -372,7 +377,15 @@ static inline void cm_probe_sequence_next(Cheesemap_Probe_Sequence& seq, cm_usiz
 {
     assert(seq.stride <= bucket_mask);
 
-    // TODO: add documentation
+    // Advance by one more group than the previous step. This forms a triangular
+    // probe sequence over groups:
+    //
+    //   step:     0   1   2   3   4
+    //   stride:   0   1   2   3   4 groups
+    //   offset:   0   1   3   6  10 groups from start
+    //
+    // Because the table has a power-of-two number of buckets, masking by
+    // `bucket_mask` wraps this sequence through every group.
 
     seq.stride += CM_GROUP_SIZE;
     seq.pos += seq.stride;
@@ -381,7 +394,7 @@ static inline void cm_probe_sequence_next(Cheesemap_Probe_Sequence& seq, cm_usiz
 
 /**
  *
- * Cheesemap_Entry represents the layout of a Key/Value pair inside the Hashmap
+ * Cheesemap_Entry stores one key/value pair in the table's entry array.
  */
 
 template <typename K, typename V>
@@ -422,6 +435,15 @@ inline Cheesemap<CM_TEMPLATE_USE> cheesemap_new()
 CM_TEMPLATE static inline cm_usize cheesemap_layout_for(cm_usize num_buckets, cm_usize& out_ctrl_offset)
 {
     assert(cm_is_pow2(num_buckets) == true);
+
+    // Allocate entries and control bytes in one block:
+    //
+    //   [entries, stored in reverse bucket order] [padding] [ctrl bytes] [ctrl clone]
+    //
+    // `ctrl` points at the first control byte. Entries are addressed backwards from
+    // `ctrl`, so bucket 0 lives immediately before the control region and bucket
+    // N - 1 lives at the start of the allocation. The extra CM_GROUP_SIZE control
+    // bytes clone the first group so group loads can wrap without a branch.
 
     cm_usize ctrl_align = CM_MAX(CM_GROUP_SIZE, alignof(CM_ENTRY_USE));
 
