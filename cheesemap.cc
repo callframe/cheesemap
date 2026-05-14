@@ -85,6 +85,17 @@ enum : cm_u8 {
     CM_WORD_WIDTH = sizeof(cm_usize) * CHAR_BIT,
 };
 
+#if defined(__SSE2__)
+#include <emmintrin.h>
+
+typedef __m128i cm_group;
+typedef cm_u16 cm_bitmask;
+
+#define CM_GROUP_SIZE 16
+#define CM_BITMASK_STRIDE 1
+#define CM_IS_SIMD
+#endif
+
 #if !defined(CM_IS_SIMD)
 
 typedef cm_usize cm_group;
@@ -105,6 +116,46 @@ inline cm_bitmask cm_group_match_tag(cm_group group, cm_u8 tag);
 inline cm_bitmask cm_group_match_empty_or_deleted(cm_group group);
 inline cm_bitmask cm_group_match_empty(cm_group group);
 inline cm_bitmask cm_group_match_full(cm_group group);
+
+/**
+ *
+ * SSE2 implementation of the group actions
+ */
+
+#if defined(__SSE2__)
+inline cm_group cm_group_load(const cm_u8* ctrl)
+{
+    return _mm_loadu_si128((const cm_group*)ctrl);
+}
+
+inline cm_bitmask cm_group_match_tag(cm_group group, cm_u8 tag)
+{
+    const __m128i tagvec = _mm_set1_epi8(tag);
+    __m128i cmp = _mm_cmpeq_epi8(group, tagvec);
+    // movemask packs the top bit of each byte into a 16-bit mask, giving one
+    // candidate bit per ctrl byte in the loaded group.
+    return _mm_movemask_epi8(cmp);
+}
+
+inline cm_bitmask cm_group_match_empty_or_deleted(cm_group group)
+{
+    // EMPTY and DELETED both have their top bit set, so movemask directly gives
+    // the "special ctrl byte" mask for the whole group.
+    return _mm_movemask_epi8(group);
+}
+
+inline cm_bitmask cm_group_match_empty(cm_group group)
+{
+    return cm_group_match_tag(group, CM_CTRL_EMPTY);
+}
+
+inline cm_bitmask cm_group_match_full(cm_group group)
+{
+    // FULL ctrl bytes clear the top bit, so the full-slot mask is just the
+    // inverse of the special-slot mask for this 16-byte group.
+    return ~cm_group_match_empty_or_deleted(group);
+}
+#endif
 
 /**
  *
