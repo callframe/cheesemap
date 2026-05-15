@@ -290,7 +290,6 @@ inline constexpr cm_u8 CM_INIT_CTRL[CM_GROUP_SIZE] = {
  */
 inline cm_u32 cm_trailing_zeros(cm_usize x)
 {
-    // TODO: this branch fixes a problem that shouldn't exist
     if (x == 0) {
         return CM_WORD_WIDTH;
     }
@@ -317,7 +316,6 @@ inline cm_u32 cm_bitmask_trailing_zeros(cm_bitmask mask)
 
 inline cm_u32 cm_leading_zeros(cm_usize x)
 {
-    // TODO: this branch fixes a problem that shouldn't exist
     if (x == 0) {
         return CM_WORD_WIDTH;
     }
