@@ -276,6 +276,11 @@ inline cm_u32 cm_leading_zeros(cm_usize x)
 #endif
 }
 
+inline cm_u32 cm_bitmask_leading_zeros(cm_bitmask mask)
+{
+    return cm_leading_zeros(mask) - (CM_WORD_WIDTH - CM_GROUP_SIZE);
+}
+
 [[maybe_unused]] inline bool cm_is_pow2(cm_usize x)
 {
     return x != 0 && (x & (x - 1)) == 0;
@@ -786,17 +791,31 @@ bool cheesemap_remove(Cheesemap<CM_TEMPLATE_USE>& map, K key)
     }
     cm_usize index_before = (index - CM_GROUP_SIZE) & map.bucket_mask;
 
-    // We can't just mark the slot EMPTY: find() stops probing at EMPTY, so if this slot
-    // was part of a full probe chain, lookups for keys displaced past it would wrongly
-    // terminate here. So we check the bytes around `index`: if there's an EMPTY nearby
-    // (within one group), find() was going to stop there anyway and we can safely mark
-    // this slot EMPTY too. Otherwise we must mark it DELETED so probing continues past it.
+    // We can't always mark a removed slot EMPTY. Lookup stops probing at EMPTY,
+    // so clearing a slot in the middle of a probe chain could make displaced
+    // entries unreachable.
+    //
+    // To decide whether the slot can become EMPTY, we examine the surrounding
+    // control bytes. `leading_zeros(empty_before)` counts the contiguous
+    // non-EMPTY bytes ending at the previous group, while
+    // `trailing_zeros(empty_after)` counts the contiguous non-EMPTY bytes
+    // starting at the current group.
+    //
+    // If the combined span is at least one full group wide, then this slot may
+    // still be part of an active probe chain and must remain DELETED so probing
+    // continues through it.
+    //
+    // Otherwise there is already an EMPTY nearby, meaning lookups would terminate
+    // naturally anyway, so we can safely convert this slot back to EMPTY and
+    // restore one growth slot.
+
     cm_group group_before = cm_group_load(cheesemap_ctrl_at(map, index_before));
     cm_group group_after = cm_group_load(cheesemap_ctrl_at(map, index));
     cm_bitmask empty_before = cm_group_match_empty(group_before);
     cm_bitmask empty_after = cm_group_match_empty(group_after);
 
-    cm_usize num_zeros = cm_leading_zeros(empty_before) + cm_trailing_zeros(empty_after);
+    cm_usize num_zeros = cm_bitmask_leading_zeros(empty_before) + cm_bitmask_trailing_zeros(empty_after);
+
     if (num_zeros >= CM_GROUP_SIZE) {
         cheesemap_set_ctrl(map, index, CM_CTRL_DELETED);
     } else {
