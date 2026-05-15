@@ -75,6 +75,12 @@ With Bazel:
 The benchmarks measure insert, replace, hit lookup, miss lookup, and remove
 throughput over table sizes from 1024 to 1048576 entries.
 
+The chart above was produced through Bazel on WSL2 under Windows 11, using
+native instructions and `-O2`. The machine used a 13th Gen Intel Core
+i7-13850HX with normal CPU scaling enabled. It was not configured as a dedicated
+benchmark machine; the numbers reflect whatever Windows scheduling and power
+management did at the time. The runtime libc was GNU libc 6.
+
 
 Use
 ---
