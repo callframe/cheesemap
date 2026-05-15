@@ -845,7 +845,7 @@ struct Cheesemap_Iter {
 CM_TEMPLATE
 Cheesemap_Iter<CM_TEMPLATE_USE> cm_iter_new(Cheesemap<CM_TEMPLATE_USE>& map)
 {
-    return Cheesemap_Iter { cm_full_iter_new(map.ctrl, map.count), map };
+    return Cheesemap_Iter<CM_TEMPLATE_USE> { cm_full_iter_new(map.ctrl, map.count), map };
 }
 
 CM_TEMPLATE
