@@ -37,6 +37,17 @@ cc_binary(
 )
 
 cc_binary(
+    name = "std_unordered_map_bench",
+    srcs = [
+        "std_unordered_map_bench.cc",
+        "common.h",
+    ],
+    copts = BENCH_COPTS,
+    deps = BENCH_DEPS,
+    visibility = ["//visibility:public"],
+)
+
+cc_binary(
     name = "khash_bench",
     srcs = [
         "khash_bench.cc",

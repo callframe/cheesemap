@@ -28,6 +28,8 @@ target_link_libraries(cheesemap_old_bench PRIVATE cheesemap_old)
 add_competitive_bench(abseil_bench "${BENCHES_DIR}/abseil_bench.cc")
 target_link_libraries(abseil_bench PRIVATE absl::flat_hash_map)
 
+add_competitive_bench(std_unordered_map_bench "${BENCHES_DIR}/std_unordered_map_bench.cc")
+
 add_competitive_bench(khash_bench "${BENCHES_DIR}/khash_bench.cc")
 
 add_custom_target(bench
@@ -35,5 +37,6 @@ add_custom_target(bench
         cheesemap_bench
         cheesemap_old_bench
         abseil_bench
+        std_unordered_map_bench
         khash_bench
 )

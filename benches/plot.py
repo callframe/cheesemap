@@ -14,8 +14,17 @@ BENCHES = [
     ("cheesemap", "cheesemap_bench"),
     ("cheesemap_old", "cheesemap_old_bench"),
     ("abseil", "abseil_bench"),
+    ("std::unordered_map", "std_unordered_map_bench"),
     ("khash", "khash_bench"),
 ]
+
+DISPLAY_NAMES = {
+    "abseil_flat_hash_map": "absl::flat_hash_map",
+    "cheesemap": "cheesemap",
+    "cheesemap_old": "cheesemap_old",
+    "khash": "khash",
+    "std_unordered_map": "std::unordered_map",
+}
 
 OPERATIONS = [
     "insert",
@@ -118,12 +127,12 @@ def plot_results(rows: list[dict], output: Path) -> None:
 
     for row in rows:
         operation = row["operation"]
-        implementation = row["implementation"]
+        implementation = DISPLAY_NAMES.get(row["implementation"], row["implementation"])
         size = row["size"]
         throughput = row["items_per_second"] / 1_000_000.0
         by_operation[operation].setdefault(implementation, []).append((size, throughput))
 
-    fig, axes = plt.subplots(len(OPERATIONS), 1, figsize=(11, 16), sharex=True)
+    fig, axes = plt.subplots(len(OPERATIONS), 1, figsize=(11, 17), sharex=True)
     fig.suptitle("Hash Map Throughput", fontsize=16)
 
     for ax, operation in zip(axes, OPERATIONS):
@@ -139,8 +148,9 @@ def plot_results(rows: list[dict], output: Path) -> None:
         ax.grid(True, which="both", linestyle=":", linewidth=0.7)
 
     axes[-1].set_xlabel("items")
-    axes[0].legend(loc="best")
-    fig.tight_layout(rect=(0, 0, 1, 0.98))
+    handles, labels = axes[0].get_legend_handles_labels()
+    fig.legend(handles, labels, loc="upper center", ncol=min(len(labels), 5), bbox_to_anchor=(0.5, 0.965))
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
     fig.savefig(output, dpi=160)
     plt.close(fig)
 
