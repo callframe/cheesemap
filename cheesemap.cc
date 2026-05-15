@@ -217,12 +217,9 @@ inline cm_bitmask cm_group_match_tag(cm_group group, cm_u8 tag)
 #define CM_REPEAT_4(x) CM_REPEAT_2(x), CM_REPEAT_2(x)
 #define CM_REPEAT_8(x) CM_REPEAT_4(x), CM_REPEAT_4(x)
 #define CM_REPEAT_16(x) CM_REPEAT_8(x), CM_REPEAT_8(x)
-#define CM_REPEAT_32(x) CM_REPEAT_16(x), CM_REPEAT_16(x)
 
 inline constexpr cm_u8 CM_INIT_CTRL[CM_GROUP_SIZE] = {
-#if CM_GROUP_SIZE == 32
-    CM_REPEAT_32(CM_CTRL_EMPTY)
-#elif CM_GROUP_SIZE == 16
+#if CM_GROUP_SIZE == 16
     CM_REPEAT_16(CM_CTRL_EMPTY)
 #elif CM_GROUP_SIZE == 8
     CM_REPEAT_8(CM_CTRL_EMPTY)
