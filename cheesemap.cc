@@ -305,6 +305,12 @@ inline cm_usize cm_alignup(cm_usize x, cm_usize align)
     return (x + align - 1) & ~(align - 1);
 }
 
+[[maybe_unused]] bool cm_isaligned(cm_usize x, cm_usize align)
+{
+    assert(cm_is_pow2(align) == true);
+    return (x & (align - 1)) == 0;
+}
+
 inline cm_usize cm_capacity_to_bucket(cm_usize capacity)
 {
 
@@ -552,6 +558,7 @@ bool cheesemap_new_with(Cheesemap<CM_TEMPLATE_USE>& map, cm_usize init_capacity)
     if (entries == NULL) {
         return false;
     }
+    assert(cm_isaligned((cm_usize)entries, alignof(CM_ENTRY_USE)) == true);
 
     cm_u8* ctrl = entries + ctrl_offset;
     memset(ctrl, CM_CTRL_EMPTY, num_buckets + CM_GROUP_SIZE);
