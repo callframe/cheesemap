@@ -768,6 +768,8 @@ bool cheesemap_insert(Cheesemap<CM_TEMPLATE_USE>& map, K key, V value)
         return true;
     }
 
+    // TODO: we do 2 probes over the probe sequences if we could do it in one
+
     insert_at = cheesemap_find_insert_index(map, h1);
     if (map.growth_left == 0 && cm_is_empty(map.ctrl[insert_at])) {
         if (!cheesemap_reserve(map, 1)) {
@@ -822,6 +824,7 @@ bool cheesemap_remove(Cheesemap<CM_TEMPLATE_USE>& map, K key)
         cheesemap_set_ctrl(map, index, CM_CTRL_EMPTY);
         map.growth_left += 1;
     }
+
     map.count -= 1;
     return true;
 }
