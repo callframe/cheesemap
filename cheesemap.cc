@@ -467,7 +467,7 @@ struct Cheesemap_Entry {
 };
 
 template <typename K, typename V>
-Cheesemap_Entry<K, V> cm_entry_new(K key, V value)
+inline Cheesemap_Entry<K, V> cm_entry_new(K key, V value)
 {
     return Cheesemap_Entry<K, V> { key, value };
 }
@@ -520,7 +520,7 @@ Cheesemap<CM_TEMPLATE_USE> cheesemap_new()
 }
 
 CM_TEMPLATE
-cm_usize cheesemap_layout_for(cm_usize num_buckets, cm_usize& out_ctrl_offset)
+inline cm_usize cheesemap_layout_for(cm_usize num_buckets, cm_usize& out_ctrl_offset)
 {
     assert(cm_is_pow2(num_buckets) == true);
 
@@ -586,7 +586,7 @@ void cheesemap_drop(Cheesemap<CM_TEMPLATE_USE>& map)
 }
 
 CM_TEMPLATE
-bool cheesemap_find_insert_index_in_group(const Cheesemap<CM_TEMPLATE_USE>& map, cm_group group,
+inline bool cheesemap_find_insert_index_in_group(const Cheesemap<CM_TEMPLATE_USE>& map, cm_group group,
     const Cheesemap_Probe_Sequence& seq, cm_usize& offset)
 {
     cm_bitmask mask = cm_group_match_empty_or_deleted(group);
@@ -599,14 +599,14 @@ bool cheesemap_find_insert_index_in_group(const Cheesemap<CM_TEMPLATE_USE>& map,
 }
 
 CM_TEMPLATE
-cm_u8* cheesemap_ctrl_at(const Cheesemap<CM_TEMPLATE_USE>& map, cm_usize index)
+inline cm_u8* cheesemap_ctrl_at(const Cheesemap<CM_TEMPLATE_USE>& map, cm_usize index)
 {
     assert(index < map.bucket_mask + 1);
     return map.ctrl + index;
 }
 
 CM_TEMPLATE
-cm_usize cheesemap_find_insert_index(const Cheesemap<CM_TEMPLATE_USE>& map, cm_usize h1)
+inline cm_usize cheesemap_find_insert_index(const Cheesemap<CM_TEMPLATE_USE>& map, cm_usize h1)
 {
     auto seq = Cheesemap_Probe_Sequence {
         h1 & map.bucket_mask,
@@ -703,7 +703,7 @@ bool cheesemap_reserve(Cheesemap<CM_TEMPLATE_USE>& map, cm_usize additional)
 }
 
 CM_TEMPLATE
-bool cheesemap_find(const Cheesemap<CM_TEMPLATE_USE>& map, K key, cm_usize h1, cm_u8 h2, cm_usize& out_index)
+inline bool cheesemap_find(const Cheesemap<CM_TEMPLATE_USE>& map, K key, cm_usize h1, cm_u8 h2, cm_usize& out_index)
 {
     auto seq = Cheesemap_Probe_Sequence {
         h1 & map.bucket_mask,
@@ -714,9 +714,10 @@ bool cheesemap_find(const Cheesemap<CM_TEMPLATE_USE>& map, K key, cm_usize h1, c
         cm_u8* ctrl_at = cheesemap_ctrl_at(map, seq.pos);
         cm_group group = cm_group_load(ctrl_at);
 
-        cm_bitmask match_mask = cm_group_match_tag(group, h2);
-        while (match_mask != 0) {
-            cm_usize bit = cm_bitmask_trailing_zeros(match_mask);
+        Cheesemap_Bitmask_Iter match_mask = cm_group_match_tag(group, h2);
+        cm_usize bit;
+
+        while (cm_bitmask_iter_next(match_mask, bit)) {
             cm_usize index = (seq.pos + bit) & map.bucket_mask;
 
             auto entry = cheesemap_entry_at(map, index);
@@ -724,8 +725,6 @@ bool cheesemap_find(const Cheesemap<CM_TEMPLATE_USE>& map, K key, cm_usize h1, c
                 out_index = index;
                 return true;
             }
-
-            match_mask &= (match_mask - 1);
         }
 
         if (cm_group_match_empty(group) != 0) {
@@ -754,7 +753,45 @@ bool cheesemap_lookup(const Cheesemap<CM_TEMPLATE_USE>& map, K key, V& out_value
 }
 
 CM_TEMPLATE
-bool cheesemap_insert(Cheesemap<CM_TEMPLATE_USE>& map, K key, V value)
+inline bool cheesemap_find_or_find_insert(const Cheesemap<CM_TEMPLATE_USE>& map, K key, cm_usize h1, cm_u8 h2, cm_usize& insert_at)
+{
+    auto seq = Cheesemap_Probe_Sequence {
+        h1 & map.bucket_mask,
+        0,
+    };
+
+    while (true) {
+        cm_u8* ctrl_at = cheesemap_ctrl_at(map, seq.pos);
+        cm_group group = cm_group_load(ctrl_at);
+
+        Cheesemap_Bitmask_Iter match_iter = cm_group_match_tag(group, h2);
+        cm_usize bit;
+
+        // TODO: needs better docs
+        //  Iterate all found matches in the group.
+        //  If there are no matches, this block is just skipped
+        //  and we will try to find an insert slot.
+        while (cm_bitmask_iter_next(match_iter, bit)) {
+            cm_usize index = (seq.pos + bit) & map.bucket_mask;
+
+            auto entry = cheesemap_entry_at(map, index);
+            if (Compare(key, entry->key)) {
+                insert_at = index;
+                return true;
+            }
+        }
+
+        // TODO: if we ever add smaller load factors, this must be changed!
+        if (cheesemap_find_insert_index_in_group(map, group, seq, insert_at)) {
+            return false;
+        }
+
+        cm_probe_sequence_next(seq, map.bucket_mask);
+    }
+}
+
+CM_TEMPLATE bool
+cheesemap_insert(Cheesemap<CM_TEMPLATE_USE>& map, K key, V value)
 {
 
     cm_hash hash = Hash(key);
@@ -762,15 +799,12 @@ bool cheesemap_insert(Cheesemap<CM_TEMPLATE_USE>& map, K key, V value)
     cm_u8 h2 = cm_h2(hash);
 
     cm_usize insert_at;
-    if (cheesemap_find(map, key, h1, h2, insert_at)) {
+    if (cheesemap_find_or_find_insert(map, key, h1, h2, insert_at)) {
         auto entry = cheesemap_entry_at(map, insert_at);
         entry->value = value;
         return true;
     }
 
-    // TODO: we do 2 probes over the probe sequences if we could do it in one
-
-    insert_at = cheesemap_find_insert_index(map, h1);
     if (map.growth_left == 0 && cm_is_empty(map.ctrl[insert_at])) {
         if (!cheesemap_reserve(map, 1)) {
             return false;
