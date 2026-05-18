@@ -688,6 +688,17 @@ bool cheesemap_resize(Cheesemap<CM_TEMPLATE_USE>& map, cm_usize new_capacity)
 }
 
 CM_TEMPLATE
+bool cheesemap_shrink_to_fit(Cheesemap<CM_TEMPLATE_USE>& map)
+{
+    cm_usize new_capacity = CM_MAX(map.count, 1);
+    if (new_capacity >= cm_bucket_mask_to_capacity(map.bucket_mask)) {
+        return true;
+    }
+
+    return cheesemap_resize(map, new_capacity);
+}
+
+CM_TEMPLATE
 bool cheesemap_reserve(Cheesemap<CM_TEMPLATE_USE>& map, cm_usize additional)
 {
     // TODO: check overflow
