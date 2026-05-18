@@ -690,6 +690,10 @@ bool cheesemap_resize(Cheesemap<CM_TEMPLATE_USE>& map, cm_usize new_capacity)
 CM_TEMPLATE
 bool cheesemap_shrink_to_fit(Cheesemap<CM_TEMPLATE_USE>& map)
 {
+    // Shrink to fit recalculates capacity based on current item count.
+    // The minimum capacity is 1 because cheesemap_new_with always allocates
+    // at least CM_GROUP_SIZE buckets, ensuring we never have zero capacity.
+    // Infact it doesn't matter whether we take the max with 1 or CM_GROUP_SIZE.
     cm_usize new_capacity = CM_MAX(map.count, 1);
     if (new_capacity >= cm_bucket_mask_to_capacity(map.bucket_mask)) {
         return true;
