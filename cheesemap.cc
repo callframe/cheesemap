@@ -348,7 +348,7 @@ inline cm_u8 cm_h2(cm_hash hash)
     // On 64-bit platforms this leaves exactly 7 bits after the shift.
     // On 32-bit platforms cm_usize is 32-bit while cm_hash is 64-bit, so
     // shifting by 25 leaves a 39-bit intermediate value instead.
-    cm_usize shifted = hash >> (sizeof(cm_usize) * CHAR_BIT - CM_FP_SIZE);
+    cm_u64 shifted = hash >> (sizeof(cm_usize) * CHAR_BIT - CM_FP_SIZE);
 
     // Mask the intermediate value down to the 7 fingerprint bits stored in
     // the ctrl block.
