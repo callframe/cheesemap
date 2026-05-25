@@ -232,27 +232,23 @@ inline constexpr cm_u8 CM_INIT_CTRL[CM_GROUP_SIZE] = {
 
 /**
  *
- * Return the number of trailing zero bits.
- * Returns CM_WORD_WIDTH when x is zero.
+ * Return the number of trailing zero bits in a bitmask.
+ * Returns CM_GROUP_SIZE when the mask is zero.
  */
-inline cm_u32 cm_trailing_zeros(cm_usize x)
-{
-    if (x == 0) {
-        return CM_WORD_WIDTH;
-    }
-
-#if defined(__x86_64__)
-    return __builtin_ctzll(x);
-#elif defined(__i386__)
-    return __builtin_ctz(x);
-#else
-#error "target platform is not supported"
-#endif
-}
 
 inline cm_u32 cm_bitmask_trailing_zeros(cm_bitmask mask)
 {
-    return cm_trailing_zeros(mask) / CM_BITMASK_STRIDE;
+    if (mask == 0) {
+        return CM_GROUP_SIZE;
+    }
+
+#if defined(__x86_64__)
+    return __builtin_ctzll(mask) / CM_BITMASK_STRIDE;
+#elif defined(__i386__)
+    return __builtin_ctz(mask) / CM_BITMASK_STRIDE;
+#else
+#error "target platform is not supported"
+#endif
 }
 
 /**
