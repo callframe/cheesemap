@@ -766,6 +766,7 @@ bool cheesemap_lookup(const Cheesemap<CM_TEMPLATE_USE>& map, K key, V& out_value
 CM_TEMPLATE
 inline bool cheesemap_find_or_find_insert(const Cheesemap<CM_TEMPLATE_USE>& map, K key, cm_usize h1, cm_u8 h2, cm_usize& insert_at)
 {
+    bool has_insert_index = false;
     auto seq = Cheesemap_Probe_Sequence {
         h1 & map.bucket_mask,
         0,
@@ -792,8 +793,11 @@ inline bool cheesemap_find_or_find_insert(const Cheesemap<CM_TEMPLATE_USE>& map,
             }
         }
 
-        // TODO: if we ever add smaller load factors, this must be changed!
-        if (cheesemap_find_insert_index_in_group(map, group, seq, insert_at)) {
+        if (!has_insert_index) {
+            has_insert_index = cheesemap_find_insert_index_in_group(map, group, seq, insert_at);
+        }
+
+        if (has_insert_index && cm_group_match_empty(group) != 0) {
             return false;
         }
 
