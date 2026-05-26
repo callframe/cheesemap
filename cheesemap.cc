@@ -779,10 +779,11 @@ inline bool cheesemap_find_or_find_insert(const Cheesemap<CM_TEMPLATE_USE>& map,
         Cheesemap_Bitmask_Iter match_iter = cm_group_match_tag(group, h2);
         cm_usize bit;
 
-        // TODO: needs better docs
-        //  Iterate all found matches in the group.
-        //  If there are no matches, this block is just skipped
-        //  and we will try to find an insert slot.
+        // Check every slot in this group whose H2 fingerprint matches `h2`.
+        // Fingerprints are only a fast filter, so each candidate still needs a
+        // full key comparison before it can be reported as found. When no
+        // candidate matches, probing continues below and the first available
+        // empty/deleted slot is remembered as the possible insertion point.
         while (cm_bitmask_iter_next(match_iter, bit)) {
             cm_usize index = (seq.pos + bit) & map.bucket_mask;
 
