@@ -11,8 +11,9 @@ Cheesemap is intentionally one public header-style source file:
 
 It will stay that way.
 
-Use it when you want a direct hash table and want to provide hashing, equality,
-allocation, and deallocation functions yourself.
+Use it when you want a direct hash table and want to provide hashing and
+equality functions yourself, along with an allocator that supplies allocation
+and deallocation.
 
 Cheesemap is designed for C-style C++ use. It does not try to integrate with
 C++ object lifetime rules. There is no rule of three, rule of five, copy
@@ -86,9 +87,12 @@ Use
 ---
 
 Include `cheesemap.cc` and instantiate `Cheesemap` with key type, value type,
-hash function, equality function, allocator, and deallocator:
+hash function, and equality function:
 
-    using Map = Cheesemap<Key, Value, Hash, Equal, Alloc, Dealloc>;
+    using Map = Cheesemap<Key, Value, Hash, Equal>;
+
+Allocation is supplied at runtime, not as a template parameter. Implement the
+`Cheesemap_Allocator` interface and pass a pointer to it to `cheesemap_new`.
 
 The basic operations are:
 
