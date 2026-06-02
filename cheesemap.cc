@@ -48,8 +48,10 @@ using Cheesemap_Hash = cm_hash (*)(K key);
 template <typename K>
 using Cheesemap_Compare = bool (*)(K key0, K key1);
 
-using Cheesemap_Alloc = cm_u8* (*)(cm_usize size, cm_usize align);
-using Cheesemap_Dealloc = void (*)(cm_u8* ptr, cm_usize size, cm_usize align);
+struct Cheesemap_Allocator {
+    virtual cm_u8* alloc(cm_usize size, cm_usize align) = 0;
+    virtual void dealloc(cm_u8* ptr, cm_usize size, cm_usize align) = 0;
+};
 
 /**
  *
@@ -479,19 +481,18 @@ inline Cheesemap_Entry<K, V> cm_entry_new(K key, V value)
  * V: value type
  * Hash: function pointer that hashes a key
  * Compare: function pointer that compares two keys for equality
- * Alloc: function pointer that allocates memory for the map
- * Dealloc: function pointer that deallocates memory for the map
+ *
+ * Allocation is supplied at runtime through a Cheesemap_Allocator stored in the
+ * map, rather than as a template parameter.
  */
 
-#define CM_TEMPLATE                   \
-    template <                        \
-        typename K,                   \
-        typename V,                   \
-        Cheesemap_Hash<K> Hash,       \
-        Cheesemap_Compare<K> Compare, \
-        Cheesemap_Alloc Alloc,        \
-        Cheesemap_Dealloc Dealloc>
-#define CM_TEMPLATE_USE K, V, Hash, Compare, Alloc, Dealloc
+#define CM_TEMPLATE             \
+    template <                  \
+        typename K,             \
+        typename V,             \
+        Cheesemap_Hash<K> Hash, \
+        Cheesemap_Compare<K> Compare>
+#define CM_TEMPLATE_USE K, V, Hash, Compare
 
 /**
  *
@@ -507,12 +508,13 @@ CM_TEMPLATE struct Cheesemap {
     cm_usize count;
     cm_usize bucket_mask;
     cm_u8* ctrl;
+    Cheesemap_Allocator* allocator;
 };
 
 CM_TEMPLATE
-Cheesemap<CM_TEMPLATE_USE> cheesemap_new()
+Cheesemap<CM_TEMPLATE_USE> cheesemap_new(Cheesemap_Allocator* allocator)
 {
-    return Cheesemap<CM_TEMPLATE_USE> { 0, 0, 0, const_cast<cm_u8*>(CM_INIT_CTRL) };
+    return Cheesemap<CM_TEMPLATE_USE> { 0, 0, 0, const_cast<cm_u8*>(CM_INIT_CTRL), allocator };
 }
 
 CM_TEMPLATE
@@ -553,7 +555,8 @@ bool cheesemap_new_with(Cheesemap<CM_TEMPLATE_USE>& map, cm_usize init_capacity)
 
     assert(total_size % alignof(CM_ENTRY_USE) == 0);
 
-    cm_u8* entries = Alloc(total_size, alignof(CM_ENTRY_USE));
+    Cheesemap_Allocator* allocator = map.allocator;
+    cm_u8* entries = allocator->alloc(total_size, alignof(CM_ENTRY_USE));
     if (entries == NULL) {
         return false;
     }
@@ -563,7 +566,7 @@ bool cheesemap_new_with(Cheesemap<CM_TEMPLATE_USE>& map, cm_usize init_capacity)
     memset(ctrl, CM_CTRL_EMPTY, num_buckets + CM_GROUP_SIZE);
 
     cm_usize growth_left = cm_bucket_mask_to_capacity(num_buckets - 1);
-    map = Cheesemap<CM_TEMPLATE_USE> { growth_left, 0, num_buckets - 1, ctrl };
+    map = Cheesemap<CM_TEMPLATE_USE> { growth_left, 0, num_buckets - 1, ctrl, allocator };
     return true;
 }
 
@@ -577,8 +580,8 @@ void cheesemap_drop(Cheesemap<CM_TEMPLATE_USE>& map)
     cm_usize total_size = cheesemap_layout_for<CM_TEMPLATE_USE>(map.bucket_mask + 1, ctrl_offset);
 
     cm_u8* entries = map.ctrl - ctrl_offset;
-    Dealloc(entries, total_size, alignof(CM_ENTRY_USE));
-    map = cheesemap_new<CM_TEMPLATE_USE>();
+    map.allocator->dealloc(entries, total_size, alignof(CM_ENTRY_USE));
+    map = cheesemap_new<CM_TEMPLATE_USE>(map.allocator);
 }
 
 CM_TEMPLATE
@@ -656,7 +659,7 @@ void cheesemap_insert_at(Cheesemap<CM_TEMPLATE_USE>& map, cm_usize index, cm_u8 
 CM_TEMPLATE
 bool cheesemap_resize(Cheesemap<CM_TEMPLATE_USE>& map, cm_usize new_capacity)
 {
-    Cheesemap<CM_TEMPLATE_USE> new_map;
+    Cheesemap<CM_TEMPLATE_USE> new_map = cheesemap_new<CM_TEMPLATE_USE>(map.allocator);
     if (!cheesemap_new_with(new_map, new_capacity)) {
         return false;
     }
@@ -925,23 +928,22 @@ bool cm_iter_next(Cheesemap_Iter<CM_TEMPLATE_USE>& iter, K const*& out_key, V*& 
  * K: key type
  * Hash: function pointer that hashes a key
  * Compare: function pointer that compares two keys for equality
- * Alloc: function pointer that allocates memory for the set
- * Dealloc: function pointer that deallocates memory for the set
+ *
+ * Allocation is supplied at runtime through a Cheesemap_Allocator stored in the
+ * backing map, rather than as a template parameter.
  */
 
-#define CM_CS_TEMPLATE                \
-    template <                        \
-        typename K,                   \
-        Cheesemap_Hash<K> Hash,       \
-        Cheesemap_Compare<K> Compare, \
-        Cheesemap_Alloc Alloc,        \
-        Cheesemap_Dealloc Dealloc>
-#define CM_CS_TEMPLATE_USE K, Hash, Compare, Alloc, Dealloc
+#define CM_CS_TEMPLATE          \
+    template <                  \
+        typename K,             \
+        Cheesemap_Hash<K> Hash, \
+        Cheesemap_Compare<K> Compare>
+#define CM_CS_TEMPLATE_USE K, Hash, Compare
 
 struct Cheeseset_Unit { };
 static_assert(sizeof(Cheeseset_Unit) == 1, "Cheeseset_Unit must be exactly one byte");
 
-#define CM_CS_INNER_TEMPLATE_USE K, Cheeseset_Unit, Hash, Compare, Alloc, Dealloc
+#define CM_CS_INNER_TEMPLATE_USE K, Cheeseset_Unit, Hash, Compare
 
 /**
  *
@@ -958,9 +960,9 @@ struct Cheeseset {
 };
 
 CM_CS_TEMPLATE
-Cheeseset<CM_CS_TEMPLATE_USE> cheeseset_new()
+Cheeseset<CM_CS_TEMPLATE_USE> cheeseset_new(Cheesemap_Allocator* allocator)
 {
-    return Cheeseset<CM_CS_TEMPLATE_USE> { cheesemap_new<CM_CS_INNER_TEMPLATE_USE>() };
+    return Cheeseset<CM_CS_TEMPLATE_USE> { cheesemap_new<CM_CS_INNER_TEMPLATE_USE>(allocator) };
 }
 
 CM_CS_TEMPLATE

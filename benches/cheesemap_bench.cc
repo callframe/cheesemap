@@ -14,18 +14,21 @@ bool Equal(BenchKey lhs, BenchKey rhs)
     return lhs == rhs;
 }
 
-cm_u8* Alloc(cm_usize size, cm_usize align)
-{
-    return new (std::align_val_t(align), std::nothrow) cm_u8[size];
-}
+class BenchAllocator : public Cheesemap_Allocator {
+public:
+    cm_u8* alloc(cm_usize size, cm_usize align) override
+    {
+        return new (std::align_val_t(align), std::nothrow) cm_u8[size];
+    }
 
-void Dealloc(cm_u8* ptr, cm_usize size, cm_usize align)
-{
-    (void)size;
-    operator delete(ptr, std::align_val_t(align));
-}
+    void dealloc(cm_u8* ptr, cm_usize size, cm_usize align) override
+    {
+        (void)size;
+        operator delete(ptr, std::align_val_t(align), std::nothrow);
+    }
+};
 
-using Map = Cheesemap<BenchKey, BenchValue, Hash, Equal, Alloc, Dealloc>;
+using Map = Cheesemap<BenchKey, BenchValue, Hash, Equal>;
 
 class CheesemapAdapter {
 public:
@@ -67,7 +70,8 @@ public:
     }
 
 private:
-    Map map_ = cheesemap_new<BenchKey, BenchValue, Hash, Equal, Alloc, Dealloc>();
+    BenchAllocator allocator_;
+    Map map_ = cheesemap_new<BenchKey, BenchValue, Hash, Equal>(&allocator_);
 };
 
 const bool registered = [] {
