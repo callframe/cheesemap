@@ -1014,7 +1014,7 @@ struct Cheeseset_Iter {
 CM_CS_TEMPLATE
 Cheeseset_Iter<CM_CS_TEMPLATE_USE> cheeseset_iter_new(Cheeseset<CM_CS_TEMPLATE_USE>& set)
 {
-    return Cheeseset_Iter { cm_iter_new(set.map) };
+    return Cheeseset_Iter<CM_CS_TEMPLATE_USE> { cm_iter_new(set.map) };
 }
 
 CM_CS_TEMPLATE
