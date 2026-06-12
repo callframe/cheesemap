@@ -276,7 +276,14 @@ inline cm_u32 cm_leading_zeros(cm_usize x)
 
 inline cm_u32 cm_bitmask_leading_zeros(cm_bitmask mask)
 {
+    // Must return slot units, like cm_bitmask_trailing_zeros.
+#if CM_BITMASK_STRIDE == 1
+    // Dense bitmask, one bit per slot
     return cm_leading_zeros(mask) - (CM_WORD_WIDTH - CM_GROUP_SIZE);
+#else
+    // SWAR bitmask, one byte per slot
+    return cm_leading_zeros(mask) / CM_BITMASK_STRIDE;
+#endif
 }
 
 [[maybe_unused]] inline bool cm_is_pow2(cm_usize x)
