@@ -704,14 +704,17 @@ bool cheesemap_shrink_to_fit(Cheesemap<CM_TEMPLATE_USE>& map)
 CM_TEMPLATE
 bool cheesemap_reserve(Cheesemap<CM_TEMPLATE_USE>& map, cm_usize additional)
 {
+    // growth_left is the remaining insertion budget before the table must
+    // grow. DELETED tombstones spend this budget without raising count, so
+    // the resize decision must use growth_left, not count.
+    if (additional <= map.growth_left) {
+        return true;
+    }
+
     // TODO: check overflow
     cm_usize min_capacity = map.count + additional;
     cm_usize total_capacity = cm_bucket_mask_to_capacity(map.bucket_mask);
     // TODO: check for rehash if we have plenty of space left
-
-    if (min_capacity <= total_capacity) {
-        return true;
-    }
 
     return cheesemap_resize(map, CM_MAX(min_capacity, total_capacity + 1));
 }
