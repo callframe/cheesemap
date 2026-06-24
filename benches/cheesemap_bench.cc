@@ -35,7 +35,7 @@ public:
 
     ~CheesemapAdapter()
     {
-        cheesemap_drop(map_);
+        cheesemap_drop(&map_, allocator_);
     }
 
     CheesemapAdapter(const CheesemapAdapter&) = delete;
@@ -43,34 +43,34 @@ public:
 
     void reserve(std::size_t size)
     {
-        if (!cheesemap_new_with(map_, size)) {
+        if (!cheesemap_new_with(&map_, allocator_, size)) {
             std::abort();
         }
     }
 
     bool insert(BenchKey key, BenchValue value)
     {
-        return cheesemap_insert(map_, key, value);
+        return cheesemap_insert(&map_, allocator_, key, value);
     }
 
     bool replace(BenchKey key, BenchValue value)
     {
-        return cheesemap_insert(map_, key, value);
+        return cheesemap_insert(&map_, allocator_, key, value);
     }
 
     bool lookup(BenchKey key, BenchValue& value) const
     {
-        return cheesemap_lookup(map_, key, value);
+        return cheesemap_lookup(&map_, key, &value);
     }
 
     bool remove(BenchKey key)
     {
-        return cheesemap_remove(map_, key);
+        return cheesemap_remove(&map_, key);
     }
 
 private:
     Cheesemap_Allocator allocator_ = { nullptr, alloc, dealloc };
-    Map map_ = cheesemap_new<BenchKey, BenchValue, Hash, Equal>(&allocator_);
+    Map map_ = cheesemap_new<BenchKey, BenchValue, Hash, Equal>();
 };
 
 const bool registered = [] {

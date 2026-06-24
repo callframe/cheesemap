@@ -92,7 +92,10 @@ hash function, and equality function:
     using Map = Cheesemap<Key, Value, Hash, Equal>;
 
 Allocation is supplied at runtime, not as a template parameter. Implement the
-`Cheesemap_Allocator` interface and pass a pointer to it to `cheesemap_new`.
+`Cheesemap_Allocator` interface and pass it by value to each operation that may
+allocate or deallocate (`cheesemap_new_with`, `cheesemap_drop`,
+`cheesemap_reserve`, `cheesemap_insert`). The map itself does not store the
+allocator. Operations take the map by pointer.
 
 The basic operations are:
 
