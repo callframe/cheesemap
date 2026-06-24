@@ -48,9 +48,13 @@ using Cheesemap_Hash = cm_hash (*)(K key);
 template <typename K>
 using Cheesemap_Compare = bool (*)(K key0, K key1);
 
+using Cheesemap_Allocator_Alloc = cm_u8* (*)(cm_u8 * ctx, cm_usize size, cm_usize align);
+using Cheesemap_Allocator_Dealloc = void (*)(cm_u8* ctx, cm_u8* ptr, cm_usize size, cm_usize align);
+
 struct Cheesemap_Allocator {
-    virtual cm_u8* alloc(cm_usize size, cm_usize align) = 0;
-    virtual void dealloc(cm_u8* ptr, cm_usize size, cm_usize align) = 0;
+    cm_u8* ctx;
+    Cheesemap_Allocator_Alloc alloc;
+    Cheesemap_Allocator_Dealloc dealloc;
 };
 
 /**
@@ -563,7 +567,7 @@ bool cheesemap_new_with(Cheesemap<CM_TEMPLATE_USE>& map, cm_usize init_capacity)
     assert(total_size % alignof(CM_ENTRY_USE) == 0);
 
     Cheesemap_Allocator* allocator = map.allocator;
-    cm_u8* entries = allocator->alloc(total_size, alignof(CM_ENTRY_USE));
+    cm_u8* entries = allocator->alloc(allocator->ctx, total_size, alignof(CM_ENTRY_USE));
     if (entries == NULL) {
         return false;
     }
@@ -587,7 +591,7 @@ void cheesemap_drop(Cheesemap<CM_TEMPLATE_USE>& map)
     cm_usize total_size = cheesemap_layout_for<CM_TEMPLATE_USE>(map.bucket_mask + 1, ctrl_offset);
 
     cm_u8* entries = map.ctrl - ctrl_offset;
-    map.allocator->dealloc(entries, total_size, alignof(CM_ENTRY_USE));
+    map.allocator->dealloc(map.allocator->ctx, entries, total_size, alignof(CM_ENTRY_USE));
     map = cheesemap_new<CM_TEMPLATE_USE>(map.allocator);
 }
 
