@@ -86,25 +86,43 @@ management did at the time. The runtime libc was GNU libc 6.
 Use
 ---
 
-Include `cheesemap.cc` and instantiate `Cheesemap` with key type, value type,
-hash function, and equality function:
+Include `cheesemap.cc` and instantiate `cheesemap::Map` with key type, value
+type, hash function, and equality function:
 
-    using Map = Cheesemap<Key, Value, Hash, Equal>;
+    using Map = cheesemap::Map<Key, Value, Hash, Equal>;
 
 Allocation is supplied at runtime, not as a template parameter. Implement the
-`Cheesemap_Allocator` interface and pass it by value to each operation that may
-allocate or deallocate (`cheesemap_new_with`, `cheesemap_drop`,
-`cheesemap_reserve`, `cheesemap_insert`). The map itself does not store the
-allocator. Operations take the map by pointer.
+`cheesemap::IAllocator` interface and pass it by value to each operation that may
+allocate or deallocate (`map_new_with`, `map_drop`, `map_reserve`, `map_insert`).
+The map itself does not store the allocator. Operations take the map by pointer.
 
 The basic operations are:
 
-    cheesemap_new
-    cheesemap_new_with
-    cheesemap_drop
-    cheesemap_reserve
-    cheesemap_insert
-    cheesemap_lookup
-    cheesemap_remove
+    cheesemap::map_new
+    cheesemap::map_new_with
+    cheesemap::map_drop
+    cheesemap::map_reserve
+    cheesemap::map_insert
+    cheesemap::map_lookup
+    cheesemap::map_remove
 
-`Cheeseset` provides the same storage strategy for set membership.
+`cheesemap::Set` provides the same storage strategy for set membership.
+
+
+Conventions
+-----------
+
+All declarations live in a single `cheesemap` namespace, so identifiers carry no
+redundant prefix.
+
+  - Types use `Ada_Case` (`Map`, `Probe_Sequence`, `Full_Iter`). The allocator
+    interface is `IAllocator`.
+  - Functions and function-like macros use `lower_case`. The two containers share
+    the namespace, so their public operations keep a `map_`/`set_` qualifier
+    (`map_insert`, `set_lookup`); internal helpers are unqualified (`group_load`,
+    `find_insert_index`).
+  - Enum constants use `Ada_Case` with no prefix (`Ctrl_Empty`, `Load_Num`).
+  - Object-like macros use `SCREAMING_CASE` with a `CM_` prefix and are defined
+    outside the namespace, since macros do not obey namespaces.
+  - Integer types come straight from `<stdint.h>`/`<stddef.h>`; the library
+    defines none of its own.

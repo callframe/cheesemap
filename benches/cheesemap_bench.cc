@@ -1,81 +1,72 @@
+#include "cheesemap.cc"
 #include "common.h"
 
-#include "cheesemap.cc"
-
-namespace {
-
-cm_hash Hash(BenchKey key)
+namespace
 {
-    return BenchHashKey(key);
+
+cheesemap::Hash Hash(BenchKey key) { return BenchHashKey(key); }
+
+bool Equal(BenchKey lhs, BenchKey rhs) { return lhs == rhs; }
+
+uint8_t* alloc(uint8_t* ctx, size_t size, size_t align)
+{
+  (void)ctx;
+  return new (std::align_val_t(align), std::nothrow) uint8_t[size];
 }
 
-bool Equal(BenchKey lhs, BenchKey rhs)
+void dealloc(uint8_t* ctx, uint8_t* ptr, size_t size, size_t align)
 {
-    return lhs == rhs;
+  (void)ctx;
+  (void)size;
+  operator delete(ptr, std::align_val_t(align), std::nothrow);
 }
 
-cm_u8* alloc(cm_u8* ctx, cm_usize size, cm_usize align)
+using Map = cheesemap::Map<BenchKey, BenchValue, Hash, Equal>;
+
+class CheesemapAdapter
 {
-    (void)ctx;
-    return new (std::align_val_t(align), std::nothrow) cm_u8[size];
-}
+ public:
+  CheesemapAdapter() = default;
 
-void dealloc(cm_u8* ctx, cm_u8* ptr, cm_usize size, cm_usize align)
-{
-    (void)ctx;
-    (void)size;
-    operator delete(ptr, std::align_val_t(align), std::nothrow);
-}
+  ~CheesemapAdapter() { cheesemap::map_drop(&map_, allocator_); }
 
-using Map = Cheesemap<BenchKey, BenchValue, Hash, Equal>;
+  CheesemapAdapter(const CheesemapAdapter&) = delete;
+  CheesemapAdapter& operator=(const CheesemapAdapter&) = delete;
 
-class CheesemapAdapter {
-public:
-    CheesemapAdapter() = default;
-
-    ~CheesemapAdapter()
+  void reserve(std::size_t size)
+  {
+    if (!cheesemap::map_new_with(&map_, allocator_, size))
     {
-        cheesemap_drop(&map_, allocator_);
+      std::abort();
     }
+  }
 
-    CheesemapAdapter(const CheesemapAdapter&) = delete;
-    CheesemapAdapter& operator=(const CheesemapAdapter&) = delete;
+  bool insert(BenchKey key, BenchValue value)
+  {
+    return cheesemap::map_insert(&map_, allocator_, key, value);
+  }
 
-    void reserve(std::size_t size)
-    {
-        if (!cheesemap_new_with(&map_, allocator_, size)) {
-            std::abort();
-        }
-    }
+  bool replace(BenchKey key, BenchValue value)
+  {
+    return cheesemap::map_insert(&map_, allocator_, key, value);
+  }
 
-    bool insert(BenchKey key, BenchValue value)
-    {
-        return cheesemap_insert(&map_, allocator_, key, value);
-    }
+  bool lookup(BenchKey key, BenchValue& value) const
+  {
+    return cheesemap::map_lookup(&map_, key, &value);
+  }
 
-    bool replace(BenchKey key, BenchValue value)
-    {
-        return cheesemap_insert(&map_, allocator_, key, value);
-    }
+  bool remove(BenchKey key) { return cheesemap::map_remove(&map_, key); }
 
-    bool lookup(BenchKey key, BenchValue& value) const
-    {
-        return cheesemap_lookup(&map_, key, &value);
-    }
-
-    bool remove(BenchKey key)
-    {
-        return cheesemap_remove(&map_, key);
-    }
-
-private:
-    Cheesemap_Allocator allocator_ = { nullptr, alloc, dealloc };
-    Map map_ = cheesemap_new<BenchKey, BenchValue, Hash, Equal>();
+ private:
+  cheesemap::IAllocator allocator_ = {nullptr, alloc, dealloc};
+  Map map_ = cheesemap::map_new<BenchKey, BenchValue, Hash, Equal>();
 };
 
-const bool registered = [] {
-    RegisterBenchmarks<CheesemapAdapter>("cheesemap");
-    return true;
+const bool registered = []
+{
+  RegisterBenchmarks<CheesemapAdapter>("cheesemap");
+  return true;
 }();
 
-} // namespace
+}  // namespace

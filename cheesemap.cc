@@ -2,6 +2,7 @@
 
 #include <assert.h>
 #include <limits.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 
@@ -17,44 +18,88 @@
 #error "MSVC is not yet supported. Open an Issue if you need this."
 #endif
 
+#define CM_MAX(a, b) ((a) > (b) ? (a) : (b))
+
+#define CM_REPEAT_1(x) x
+#define CM_REPEAT_2(x) CM_REPEAT_1(x), CM_REPEAT_1(x)
+#define CM_REPEAT_4(x) CM_REPEAT_2(x), CM_REPEAT_2(x)
+#define CM_REPEAT_8(x) CM_REPEAT_4(x), CM_REPEAT_4(x)
+#define CM_REPEAT_16(x) CM_REPEAT_8(x), CM_REPEAT_8(x)
+
+#if defined(__SSE2__)
+#include <emmintrin.h>
+
+#define CM_GROUP_SIZE 16
+#define CM_BITMASK_STRIDE 1
+#define CM_IS_SIMD
+#endif
+
+#if !defined(CM_IS_SIMD)
+#define CM_GROUP_SIZE __SIZEOF_POINTER__
+#define CM_BITMASK_STRIDE CHAR_BIT
+#endif
+
+#define CM_ENTRY_USE Entry<K, V>
+
 /**
  *
- * Cheesemap types
+ * Template parameter macros used to keep the public and internal function
+ * signatures short.
+ *
+ * K: key type
+ * V: value type
+ * Hasher: function pointer that hashes a key
+ * Comparer: function pointer that compares two keys for equality
+ *
+ * Allocation is supplied at runtime through an IAllocator passed by value to
+ * each method that allocates or deallocates.
  */
 
-typedef uint8_t cm_u8;
-typedef uint16_t cm_u16;
-typedef uint32_t cm_u32;
-typedef uint64_t cm_u64;
+#define CM_TEMPLATE \
+  template <typename K, typename V, Hash_Fn<K> Hasher, Compare_Fn<K> Comparer>
+#define CM_TEMPLATE_USE K, V, Hasher, Comparer
 
-#if defined(__x86_64__)
-typedef cm_u64 cm_usize;
-#elif defined(__i386__)
-typedef cm_u32 cm_usize;
-#else
-#error "target platform not supported"
-#endif
+/**
+ *
+ * Template parameter macros used to keep the public Set function
+ * signatures short.
+ *
+ * K: key type
+ * Hasher: function pointer that hashes a key
+ * Comparer: function pointer that compares two keys for equality
+ */
+
+#define CM_CS_TEMPLATE \
+  template <typename K, Hash_Fn<K> Hasher, Compare_Fn<K> Comparer>
+#define CM_CS_TEMPLATE_USE K, Hasher, Comparer
+#define CM_CS_INNER_TEMPLATE_USE K, Unit, Hasher, Comparer
+
+namespace cheesemap
+{
 
 /**
  *
  * Hash and compare operations
  */
 
-typedef cm_u64 cm_hash;
+using Hash = uint64_t;
 
 template <typename K>
-using Cheesemap_Hash = cm_hash (*)(K key);
+using Hash_Fn = Hash (*)(K key);
 
 template <typename K>
-using Cheesemap_Compare = bool (*)(K key0, K key1);
+using Compare_Fn = bool (*)(K key0, K key1);
 
-using Cheesemap_Allocator_Alloc = cm_u8* (*)(cm_u8 * ctx, cm_usize size, cm_usize align);
-using Cheesemap_Allocator_Dealloc = void (*)(cm_u8* ctx, cm_u8* ptr, cm_usize size, cm_usize align);
+using Alloc_Fn = uint8_t* (*)(uint8_t* ctx, size_t size, size_t align);
 
-struct Cheesemap_Allocator {
-    cm_u8* ctx;
-    Cheesemap_Allocator_Alloc alloc;
-    Cheesemap_Allocator_Dealloc dealloc;
+using Dealloc_Fn = void (*)(uint8_t* ctx, uint8_t* ptr, size_t size,
+                            size_t align);
+
+struct IAllocator
+{
+  uint8_t* ctx;
+  Alloc_Fn alloc;
+  Dealloc_Fn dealloc;
 };
 
 /**
@@ -69,46 +114,38 @@ struct Cheesemap_Allocator {
  * the real buckets, so group loads can wrap around the end of the table.
  */
 
-enum : cm_u8 {
-    // cheesemap config
-    CM_LOAD_DENOM = 8,
-    CM_LOAD_NUM = 7,
-    //
-    // ctrl ops
-    // -1 as i8, all bits set, top bit = 1
-    CM_CTRL_EMPTY = 0xFF, // 0b1111_1111
-    // -128 as i8, top bit = 1
-    CM_CTRL_DELETED = 0x80, // 0b1000_0000
-    // FULL entries have top bit = 0, lower 7 bits are H2 hash
-    CM_H2_MASK = 0x7F, // 0b0111_1111
-    // Mask to get bottom bit
-    CM_CTRL_END = 0x01, // 0b0000_0001
-    // Number of fingerprint bits
-    CM_FP_SIZE = 7,
-    //
-    // aux
-    // Size of a word in bits
-    CM_WORD_WIDTH = sizeof(cm_usize) * CHAR_BIT,
+enum : uint8_t
+{
+  // cheesemap config
+  Load_Denom = 8,
+  Load_Num = 7,
+  //
+  // ctrl ops
+  // -1 as i8, all bits set, top bit = 1
+  Ctrl_Empty = 0xFF,  // 0b1111_1111
+                      // -128 as i8, top bit = 1
+  Ctrl_Deleted =
+      0x80,         // 0b1000_0000
+                    // FULL entries have top bit = 0, lower 7 bits are H2 hash
+  H2_Mask = 0x7F,   // 0b0111_1111
+                    // Mask to get bottom bit
+  Ctrl_End = 0x01,  // 0b0000_0001
+                    // Number of fingerprint bits
+  Fp_Size = 7,
+  //
+  // aux
+  // Size of a word in bits
+  Word_Width = sizeof(size_t) * CHAR_BIT,
 };
 
 #if defined(__SSE2__)
-#include <emmintrin.h>
-
-typedef __m128i cm_group;
-typedef cm_u16 cm_bitmask;
-
-#define CM_GROUP_SIZE 16
-#define CM_BITMASK_STRIDE 1
-#define CM_IS_SIMD
+using Group = __m128i;
+using Bitmask = uint16_t;
 #endif
 
 #if !defined(CM_IS_SIMD)
-
-typedef cm_usize cm_group;
-typedef cm_group cm_bitmask;
-
-#define CM_GROUP_SIZE __SIZEOF_POINTER__
-#define CM_BITMASK_STRIDE CHAR_BIT
+using Group = size_t;
+using Bitmask = Group;
 #endif
 
 /**
@@ -117,11 +154,11 @@ typedef cm_group cm_bitmask;
  */
 
 // TODO: check whether passing my pointer is faster
-inline cm_group cm_group_load(const cm_u8* ctrl);
-inline cm_bitmask cm_group_match_tag(cm_group group, cm_u8 tag);
-inline cm_bitmask cm_group_match_empty_or_deleted(cm_group group);
-inline cm_bitmask cm_group_match_empty(cm_group group);
-inline cm_bitmask cm_group_match_full(cm_group group);
+inline Group group_load(const uint8_t* ctrl);
+inline Bitmask group_match_tag(Group group, uint8_t tag);
+inline Bitmask group_match_empty_or_deleted(Group group);
+inline Bitmask group_match_empty(Group group);
+inline Bitmask group_match_full(Group group);
 
 /**
  *
@@ -129,37 +166,37 @@ inline cm_bitmask cm_group_match_full(cm_group group);
  */
 
 #if defined(__SSE2__)
-inline cm_group cm_group_load(const cm_u8* ctrl)
+inline Group group_load(const uint8_t* ctrl)
 {
-    return _mm_loadu_si128((const cm_group*)ctrl);
+  return _mm_loadu_si128((const Group*)ctrl);
 }
 
-inline cm_bitmask cm_group_match_tag(cm_group group, cm_u8 tag)
+inline Bitmask group_match_tag(Group group, uint8_t tag)
 {
-    const __m128i tagvec = _mm_set1_epi8(tag);
-    __m128i cmp = _mm_cmpeq_epi8(group, tagvec);
-    // movemask packs the top bit of each byte into a 16-bit mask, giving one
-    // candidate bit per ctrl byte in the loaded group.
-    return _mm_movemask_epi8(cmp);
+  const __m128i tagvec = _mm_set1_epi8(tag);
+  __m128i cmp = _mm_cmpeq_epi8(group, tagvec);
+  // movemask packs the top bit of each byte into a 16-bit mask, giving one
+  // candidate bit per ctrl byte in the loaded group.
+  return _mm_movemask_epi8(cmp);
 }
 
-inline cm_bitmask cm_group_match_empty_or_deleted(cm_group group)
+inline Bitmask group_match_empty_or_deleted(Group group)
 {
-    // EMPTY and DELETED both have their top bit set, so movemask directly gives
-    // the "special ctrl byte" mask for the whole group.
-    return _mm_movemask_epi8(group);
+  // EMPTY and DELETED both have their top bit set, so movemask directly gives
+  // the "special ctrl byte" mask for the whole group.
+  return _mm_movemask_epi8(group);
 }
 
-inline cm_bitmask cm_group_match_empty(cm_group group)
+inline Bitmask group_match_empty(Group group)
 {
-    return cm_group_match_tag(group, CM_CTRL_EMPTY);
+  return group_match_tag(group, Ctrl_Empty);
 }
 
-inline cm_bitmask cm_group_match_full(cm_group group)
+inline Bitmask group_match_full(Group group)
 {
-    // FULL ctrl bytes clear the top bit, so the full-slot mask is just the
-    // inverse of the special-slot mask for this 16-byte group.
-    return ~cm_group_match_empty_or_deleted(group);
+  // FULL ctrl bytes clear the top bit, so the full-slot mask is just the
+  // inverse of the special-slot mask for this 16-byte group.
+  return ~group_match_empty_or_deleted(group);
 }
 #endif
 
@@ -169,39 +206,39 @@ inline cm_bitmask cm_group_match_full(cm_group group)
  */
 
 #if !defined(CM_IS_SIMD)
-inline cm_group cm_group_repeat(cm_u8 v)
+inline Group group_repeat(uint8_t v)
 {
-    return (cm_group)v * (((cm_group)-1) / (cm_u8)~0);
+  return (Group)v * (((Group)-1) / (uint8_t)~0);
 }
 
-inline cm_group cm_group_load(const cm_u8* ctrl)
+inline Group group_load(const uint8_t* ctrl)
 {
-    assert(ctrl != NULL);
+  assert(ctrl != NULL);
 
-    cm_group v;
-    memcpy(&v, ctrl, sizeof(v));
-    return v;
+  Group v;
+  memcpy(&v, ctrl, sizeof(v));
+  return v;
 }
 
-inline cm_bitmask cm_group_match_empty_or_deleted(cm_group group)
+inline Bitmask group_match_empty_or_deleted(Group group)
 {
-    return group & cm_group_repeat(CM_CTRL_DELETED);
+  return group & group_repeat(Ctrl_Deleted);
 }
 
-inline cm_bitmask cm_group_match_empty(cm_group group)
+inline Bitmask group_match_empty(Group group)
 {
-    return (group & (group << 1)) & cm_group_repeat(CM_CTRL_DELETED);
+  return (group & (group << 1)) & group_repeat(Ctrl_Deleted);
 }
 
-inline cm_bitmask cm_group_match_full(cm_group group)
+inline Bitmask group_match_full(Group group)
 {
-    return cm_group_match_empty_or_deleted(group) ^ cm_group_repeat(CM_CTRL_DELETED);
+  return group_match_empty_or_deleted(group) ^ group_repeat(Ctrl_Deleted);
 }
 
-inline cm_bitmask cm_group_match_tag(cm_group group, cm_u8 tag)
+inline Bitmask group_match_tag(Group group, uint8_t tag)
 {
-    cm_group cmp = group ^ cm_group_repeat(tag);
-    return (cmp - cm_group_repeat(CM_CTRL_END)) & ~cmp & cm_group_repeat(CM_CTRL_DELETED);
+  Group cmp = group ^ group_repeat(tag);
+  return (cmp - group_repeat(Ctrl_End)) & ~cmp & group_repeat(Ctrl_Deleted);
 }
 
 #endif
@@ -216,21 +253,13 @@ inline cm_bitmask cm_group_match_tag(cm_group group, cm_u8 tag)
  * map has no growth left, and resize before writing.
  */
 
-#define CM_MAX(a, b) ((a) > (b) ? (a) : (b))
-
-#define CM_REPEAT_1(x) x
-#define CM_REPEAT_2(x) CM_REPEAT_1(x), CM_REPEAT_1(x)
-#define CM_REPEAT_4(x) CM_REPEAT_2(x), CM_REPEAT_2(x)
-#define CM_REPEAT_8(x) CM_REPEAT_4(x), CM_REPEAT_4(x)
-#define CM_REPEAT_16(x) CM_REPEAT_8(x), CM_REPEAT_8(x)
-
-inline constexpr cm_u8 CM_INIT_CTRL[CM_GROUP_SIZE] = {
+inline constexpr uint8_t Init_Ctrl[CM_GROUP_SIZE] = {
 #if CM_GROUP_SIZE == 16
-    CM_REPEAT_16(CM_CTRL_EMPTY)
+    CM_REPEAT_16(Ctrl_Empty)
 #elif CM_GROUP_SIZE == 8
-    CM_REPEAT_8(CM_CTRL_EMPTY)
+    CM_REPEAT_8(Ctrl_Empty)
 #elif CM_GROUP_SIZE == 4
-    CM_REPEAT_4(CM_CTRL_EMPTY)
+    CM_REPEAT_4(Ctrl_Empty)
 #else
 #error "group size is not supported"
 #endif
@@ -242,16 +271,17 @@ inline constexpr cm_u8 CM_INIT_CTRL[CM_GROUP_SIZE] = {
  * Returns CM_GROUP_SIZE when the mask is zero.
  */
 
-inline cm_u32 cm_bitmask_trailing_zeros(cm_bitmask mask)
+inline uint32_t bitmask_trailing_zeros(Bitmask mask)
 {
-    if (mask == 0) {
-        return CM_GROUP_SIZE;
-    }
+  if (mask == 0)
+  {
+    return CM_GROUP_SIZE;
+  }
 
 #if defined(__x86_64__)
-    return __builtin_ctzll(mask) / CM_BITMASK_STRIDE;
+  return __builtin_ctzll(mask) / CM_BITMASK_STRIDE;
 #elif defined(__i386__)
-    return __builtin_ctz(mask) / CM_BITMASK_STRIDE;
+  return __builtin_ctz(mask) / CM_BITMASK_STRIDE;
 #else
 #error "target platform is not supported"
 #endif
@@ -260,184 +290,183 @@ inline cm_u32 cm_bitmask_trailing_zeros(cm_bitmask mask)
 /**
  *
  * Return the number of leading zero bits.
- * Returns CM_WORD_WIDTH when x is zero.
+ * Returns Word_Width when x is zero.
  */
 
-inline cm_u32 cm_leading_zeros(cm_usize x)
+inline uint32_t leading_zeros(size_t x)
 {
-    if (x == 0) {
-        return CM_WORD_WIDTH;
-    }
+  if (x == 0)
+  {
+    return Word_Width;
+  }
 
 #if defined(__x86_64__)
-    return __builtin_clzll(x);
+  return __builtin_clzll(x);
 #elif defined(__i386__)
-    return __builtin_clz(x);
+  return __builtin_clz(x);
 #else
 #error "target platform is not supported"
 #endif
 }
 
-inline cm_u32 cm_bitmask_leading_zeros(cm_bitmask mask)
+inline uint32_t bitmask_leading_zeros(Bitmask mask)
 {
-    // Must return slot units, like cm_bitmask_trailing_zeros.
+  // Must return slot units, like bitmask_trailing_zeros.
 #if CM_BITMASK_STRIDE == 1
-    // Dense bitmask, one bit per slot
-    return cm_leading_zeros(mask) - (CM_WORD_WIDTH - CM_GROUP_SIZE);
+  // Dense bitmask, one bit per slot
+  return leading_zeros(mask) - (Word_Width - CM_GROUP_SIZE);
 #else
-    // SWAR bitmask, one byte per slot
-    return cm_leading_zeros(mask) / CM_BITMASK_STRIDE;
+  // SWAR bitmask, one byte per slot
+  return leading_zeros(mask) / CM_BITMASK_STRIDE;
 #endif
 }
 
-[[maybe_unused]] inline bool cm_is_pow2(cm_usize x)
+[[maybe_unused]] inline bool is_pow2(size_t x)
 {
-    return x != 0 && (x & (x - 1)) == 0;
+  return x != 0 && (x & (x - 1)) == 0;
 }
 
-inline cm_usize cm_next_pow2(cm_usize x)
+inline size_t next_pow2(size_t x)
 {
-    if (x <= 1)
-        return 1;
+  if (x <= 1) return 1;
 
-    return (static_cast<cm_usize>(1) << (CM_WORD_WIDTH - cm_leading_zeros(x - 1)));
+  return ((size_t)1 << (Word_Width - leading_zeros(x - 1)));
 }
 
-inline cm_usize cm_bucket_mask_to_capacity(cm_usize bucket_mask)
+inline size_t bucket_mask_to_capacity(size_t bucket_mask)
 {
-    // Capacity is the maximum number of full buckets allowed before growth.
-    // Cheesemap keeps at least 1/8 of the buckets empty, so capacity is 7/8
-    // of the bucket count.
-    return ((bucket_mask + 1) / CM_LOAD_DENOM) * CM_LOAD_NUM;
+  // Capacity is the maximum number of full buckets allowed before growth.
+  // Cheesemap keeps at least 1/8 of the buckets empty, so capacity is 7/8
+  // of the bucket count.
+  return ((bucket_mask + 1) / Load_Denom) * Load_Num;
 }
 
-inline cm_usize cm_alignup(cm_usize x, cm_usize align)
+inline size_t alignup(size_t x, size_t align)
 {
-    assert(cm_is_pow2(align) == true);
-    return (x + align - 1) & ~(align - 1);
+  assert(is_pow2(align) == true);
+  return (x + align - 1) & ~(align - 1);
 }
 
-[[maybe_unused]] bool cm_isaligned(cm_usize x, cm_usize align)
+[[maybe_unused]] inline bool is_aligned(size_t x, size_t align)
 {
-    assert(cm_is_pow2(align) == true);
-    return (x & (align - 1)) == 0;
+  assert(is_pow2(align) == true);
+  return (x & (align - 1)) == 0;
 }
 
-inline cm_usize cm_capacity_to_bucket(cm_usize capacity)
+inline size_t capacity_to_bucket(size_t capacity)
 {
-
-    // Choose enough buckets to hold `capacity` items at a 7/8 max load factor.
-    cm_usize adjusted_capacity = capacity * CM_LOAD_DENOM / CM_LOAD_NUM;
-    return CM_MAX(cm_next_pow2(adjusted_capacity), CM_GROUP_SIZE);
+  // Choose enough buckets to hold `capacity` items at a 7/8 max load factor.
+  size_t adjusted_capacity = capacity * Load_Denom / Load_Num;
+  return CM_MAX(next_pow2(adjusted_capacity), CM_GROUP_SIZE);
 }
 
-[[maybe_unused]] inline bool cm_is_special(cm_u8 tag)
+[[maybe_unused]] inline bool is_special(uint8_t tag)
 {
-    // Returns true for special control bytes, which have their high bit set.
-    // EMPTY and DELETED are special; FULL control bytes are not.
-    return (tag & CM_CTRL_DELETED) != 0;
+  // Returns true for special control bytes, which have their high bit set.
+  // EMPTY and DELETED are special; FULL control bytes are not.
+  return (tag & Ctrl_Deleted) != 0;
 }
 
-inline bool cm_is_empty(cm_u8 tag)
+inline bool is_empty(uint8_t tag)
 {
-    assert(cm_is_special(tag) == true);
-    return (tag & CM_CTRL_END) != 0;
+  assert(is_special(tag) == true);
+  return (tag & Ctrl_End) != 0;
 }
 
-inline cm_usize cm_h1(cm_hash hash)
+inline size_t h1(Hash hash)
 {
-    // Convert the hash to the native word size used by the probing logic.
-    // On narrower targets this truncates the upper bits of the hash.
-    return static_cast<cm_usize>(hash);
+  // Convert the hash to the native word size used by the probing logic.
+  // On narrower targets this truncates the upper bits of the hash.
+  return (size_t)hash;
 }
 
-inline cm_u8 cm_h2(cm_hash hash)
+inline uint8_t h2(Hash hash)
 {
+  // On 64-bit platforms this leaves exactly 7 bits after the shift.
+  // On 32-bit platforms size_t is 32-bit while Hash is 64-bit, so
+  // shifting by 25 leaves a 39-bit intermediate value instead.
+  uint64_t shifted = hash >> (sizeof(size_t) * CHAR_BIT - Fp_Size);
 
-    // On 64-bit platforms this leaves exactly 7 bits after the shift.
-    // On 32-bit platforms cm_usize is 32-bit while cm_hash is 64-bit, so
-    // shifting by 25 leaves a 39-bit intermediate value instead.
-    cm_u64 shifted = hash >> (sizeof(cm_usize) * CHAR_BIT - CM_FP_SIZE);
-
-    // Mask the intermediate value down to the 7 fingerprint bits stored in
-    // the ctrl block.
-    return static_cast<cm_u8>(shifted & CM_H2_MASK);
+  // Mask the intermediate value down to the 7 fingerprint bits stored in
+  // the ctrl block.
+  return (uint8_t)(shifted & H2_Mask);
 }
 
 /**
  *
- * Cheesemap_Bitmask_Iter walks the set bits in a bitmask.
+ * Bitmask_Iter walks the set bits in a bitmask.
  * Each step returns the lowest set bit and clears it from the iterator.
  */
 
-typedef cm_bitmask Cheesemap_Bitmask_Iter;
+using Bitmask_Iter = Bitmask;
 
-inline bool cm_bitmask_iter_next(Cheesemap_Bitmask_Iter* iter, cm_usize* out_index)
+inline bool bitmask_iter_next(Bitmask_Iter* iter, size_t* out_index)
 {
-    Cheesemap_Bitmask_Iter it = *iter;
-    if (it == 0)
-        return false;
+  Bitmask_Iter it = *iter;
+  if (it == 0) return false;
 
-    cm_usize bit = cm_bitmask_trailing_zeros(it);
-    it &= (it - 1);
+  size_t bit = bitmask_trailing_zeros(it);
+  it &= (it - 1);
 
-    *iter = it;
-    *out_index = bit;
+  *iter = it;
+  *out_index = bit;
 
-    return true;
+  return true;
 }
 
 /**
  *
- * Cheesemap_Full_Iter walks buckets whose control bytes are FULL.
+ * Full_Iter walks buckets whose control bytes are FULL.
  * Each step returns the bucket index for one occupied entry.
  */
 
-struct Cheesemap_Full_Iter {
-    Cheesemap_Bitmask_Iter bitmask_iter;
-    cm_usize bucket_index;
-    cm_usize num_items;
-    cm_u8 const* ctrl;
+struct Full_Iter
+{
+  Bitmask_Iter bitmask_iter;
+  size_t bucket_index;
+  size_t num_items;
+  uint8_t const* ctrl;
 };
 
-inline Cheesemap_Bitmask_Iter cm_full_iter_load_mask(cm_u8 const* ctrl)
+inline Bitmask_Iter full_iter_load_mask(uint8_t const* ctrl)
 {
-    cm_group group = cm_group_load(ctrl);
-    return cm_group_match_full(group);
+  Group group = group_load(ctrl);
+  return group_match_full(group);
 }
 
-inline Cheesemap_Full_Iter cm_full_iter_new(cm_u8 const* ctrl, cm_usize num_items)
+inline Full_Iter full_iter_new(uint8_t const* ctrl, size_t num_items)
 {
-    Cheesemap_Bitmask_Iter iter = cm_full_iter_load_mask(ctrl);
-    return Cheesemap_Full_Iter { iter, 0, num_items, ctrl };
+  Bitmask_Iter iter = full_iter_load_mask(ctrl);
+  return Full_Iter{iter, 0, num_items, ctrl};
 }
 
-inline cm_usize cm_full_iter_next_inner(Cheesemap_Full_Iter* iter)
+inline size_t full_iter_next_inner(Full_Iter* iter)
 {
-    Cheesemap_Full_Iter it = *iter;
+  Full_Iter it = *iter;
 
-    while (true) {
-        cm_usize group_offset;
-        if (cm_bitmask_iter_next(&it.bitmask_iter, &group_offset)) {
-            *iter = it;
-            return it.bucket_index + group_offset;
-        }
-
-        it.ctrl += CM_GROUP_SIZE;
-        it.bitmask_iter = cm_full_iter_load_mask(it.ctrl);
-        it.bucket_index += CM_GROUP_SIZE;
+  while (true)
+  {
+    size_t group_offset;
+    if (bitmask_iter_next(&it.bitmask_iter, &group_offset))
+    {
+      *iter = it;
+      return it.bucket_index + group_offset;
     }
+
+    it.ctrl += CM_GROUP_SIZE;
+    it.bitmask_iter = full_iter_load_mask(it.ctrl);
+    it.bucket_index += CM_GROUP_SIZE;
+  }
 }
 
-inline bool cm_full_iter_next(Cheesemap_Full_Iter* iter, cm_usize* out_offset)
+inline bool full_iter_next(Full_Iter* iter, size_t* out_offset)
 {
-    cm_usize num_items = iter->num_items;
-    if (num_items == 0)
-        return false;
+  size_t num_items = iter->num_items;
+  if (num_items == 0) return false;
 
-    *out_offset = cm_full_iter_next_inner(iter);
-    iter->num_items = num_items - 1;
-    return true;
+  *out_offset = full_iter_next_inner(iter);
+  iter->num_items = num_items - 1;
+  return true;
 }
 
 /**
@@ -447,76 +476,54 @@ inline bool cm_full_iter_next(Cheesemap_Full_Iter* iter, cm_usize* out_offset)
  * before repeating.
  */
 
-struct Cheesemap_Probe_Sequence {
-    cm_usize pos;
-    cm_usize stride;
+struct Probe_Sequence
+{
+  size_t pos;
+  size_t stride;
 };
 
-inline void cm_probe_sequence_next(Cheesemap_Probe_Sequence* seq, cm_usize bucket_mask)
+inline void probe_sequence_next(Probe_Sequence* seq, size_t bucket_mask)
 {
-    Cheesemap_Probe_Sequence s = *seq;
-    assert(s.stride <= bucket_mask);
+  Probe_Sequence s = *seq;
+  assert(s.stride <= bucket_mask);
 
-    // Advance by one more group than the previous step. This forms a triangular
-    // probe sequence over groups:
-    //
-    //   step:     0   1   2   3   4
-    //   stride:   0   1   2   3   4 groups
-    //   offset:   0   1   3   6  10 groups from start
-    //
-    // Because the table has a power-of-two number of buckets, masking by
-    // `bucket_mask` wraps this sequence through every group.
+  // Advance by one more group than the previous step. This forms a triangular
+  // probe sequence over groups:
+  //
+  //   step:     0   1   2   3   4
+  //   stride:   0   1   2   3   4 groups
+  //   offset:   0   1   3   6  10 groups from start
+  //
+  // Because the table has a power-of-two number of buckets, masking by
+  // `bucket_mask` wraps this sequence through every group.
 
-    s.stride += CM_GROUP_SIZE;
-    s.pos += s.stride;
-    s.pos &= bucket_mask;
-    *seq = s;
+  s.stride += CM_GROUP_SIZE;
+  s.pos += s.stride;
+  s.pos &= bucket_mask;
+  *seq = s;
 }
 
 /**
  *
- * Cheesemap_Entry stores one key/value pair in the table's entry array.
+ * Entry stores one key/value pair in the table's entry array.
  */
 
 template <typename K, typename V>
-struct Cheesemap_Entry {
-    K key;
-    V value;
+struct Entry
+{
+  K key;
+  V value;
 };
 
 template <typename K, typename V>
-inline Cheesemap_Entry<K, V> cm_entry_new(K key, V value)
+inline Entry<K, V> entry_new(K key, V value)
 {
-    return Cheesemap_Entry<K, V> { key, value };
+  return Entry<K, V>{key, value};
 }
 
-#define CM_ENTRY_USE Cheesemap_Entry<K, V>
-
 /**
  *
- * Template parameter macros used to keep the public and internal function
- * signatures short.
- *
- * K: key type
- * V: value type
- * Hash: function pointer that hashes a key
- * Compare: function pointer that compares two keys for equality
- *
- * Allocation is supplied at runtime through a Cheesemap_Allocator passed by
- * value to each method that allocates or deallocates.
- */
-
-#define CM_TEMPLATE             \
-    template <                  \
-        typename K,             \
-        typename V,             \
-        Cheesemap_Hash<K> Hash, \
-        Cheesemap_Compare<K> Compare>
-#define CM_TEMPLATE_USE K, V, Hash, Compare
-
-/**
- *
- * Cheesemap is a Swiss-table-style hash map.
+ * Map is a Swiss-table-style hash map.
  *
  * The map stores keys and values in a contiguous entry array and keeps probing
  * metadata in a separate control-byte array. `growth_left` tracks how many
@@ -524,537 +531,560 @@ inline Cheesemap_Entry<K, V> cm_entry_new(K key, V value)
  */
 
 CM_TEMPLATE
-struct Cheesemap {
-    cm_usize growth_left;
-    cm_usize count;
-    cm_usize bucket_mask;
-    cm_u8* ctrl;
+struct Map
+{
+  size_t growth_left;
+  size_t count;
+  size_t bucket_mask;
+  uint8_t* ctrl;
 };
 
 CM_TEMPLATE
-Cheesemap<CM_TEMPLATE_USE> cheesemap_new()
+Map<CM_TEMPLATE_USE> map_new()
 {
-    return Cheesemap<CM_TEMPLATE_USE> { 0, 0, 0, const_cast<cm_u8*>(CM_INIT_CTRL) };
+  return Map<CM_TEMPLATE_USE>{0, 0, 0, (uint8_t*)Init_Ctrl};
 }
 
 CM_TEMPLATE
-inline cm_usize cheesemap_layout_for(cm_usize num_buckets, cm_usize& out_ctrl_offset)
+inline size_t layout_for(size_t num_buckets, size_t& out_ctrl_offset)
 {
-    assert(cm_is_pow2(num_buckets) == true);
+  assert(is_pow2(num_buckets) == true);
 
-    // Allocate entries and control bytes in one block:
-    //
-    //   [entries, stored in reverse bucket order] [padding] [ctrl bytes] [ctrl clone]
-    //
-    // `ctrl` points at the first control byte. Entries are addressed backwards from
-    // `ctrl`, so bucket 0 lives immediately before the control region and bucket
-    // N - 1 lives at the start of the allocation. The extra CM_GROUP_SIZE control
-    // bytes clone the first group so group loads can wrap without a branch.
+  // Allocate entries and control bytes in one block:
+  //
+  //   [entries, stored in reverse bucket order] [padding] [ctrl bytes] [ctrl
+  //   clone]
+  //
+  // `ctrl` points at the first control byte. Entries are addressed backwards
+  // from `ctrl`, so bucket 0 lives immediately before the control region and
+  // bucket N - 1 lives at the start of the allocation. The extra CM_GROUP_SIZE
+  // control bytes clone the first group so group loads can wrap without a
+  // branch.
 
-    cm_usize ctrl_align = CM_MAX(CM_GROUP_SIZE, alignof(CM_ENTRY_USE));
+  size_t ctrl_align = CM_MAX(CM_GROUP_SIZE, alignof(CM_ENTRY_USE));
 
-    // TODO: check for overflow
+  // TODO: check for overflow
 
-    cm_usize base_offset = sizeof(CM_ENTRY_USE) * num_buckets;
-    cm_usize ctrl_offset = cm_alignup(base_offset, ctrl_align);
+  size_t base_offset = sizeof(CM_ENTRY_USE) * num_buckets;
+  size_t ctrl_offset = alignup(base_offset, ctrl_align);
 
-    cm_usize total_size = ctrl_offset + num_buckets + CM_GROUP_SIZE;
-    total_size = cm_alignup(total_size, alignof(CM_ENTRY_USE));
+  size_t total_size = ctrl_offset + num_buckets + CM_GROUP_SIZE;
+  total_size = alignup(total_size, alignof(CM_ENTRY_USE));
 
-    out_ctrl_offset = ctrl_offset;
-    return total_size;
+  out_ctrl_offset = ctrl_offset;
+  return total_size;
 }
 
 CM_TEMPLATE
-bool cheesemap_new_with(Cheesemap<CM_TEMPLATE_USE>* map, Cheesemap_Allocator allocator, cm_usize init_capacity)
+bool map_new_with(Map<CM_TEMPLATE_USE>* map, IAllocator allocator,
+                  size_t init_capacity)
 {
-    cm_usize num_buckets = cm_capacity_to_bucket(init_capacity);
+  size_t num_buckets = capacity_to_bucket(init_capacity);
 
-    cm_usize ctrl_offset;
-    cm_usize total_size = cheesemap_layout_for<CM_TEMPLATE_USE>(num_buckets, ctrl_offset);
+  size_t ctrl_offset;
+  size_t total_size = layout_for<CM_TEMPLATE_USE>(num_buckets, ctrl_offset);
 
-    assert(total_size % alignof(CM_ENTRY_USE) == 0);
+  assert(total_size % alignof(CM_ENTRY_USE) == 0);
 
-    cm_u8* entries = allocator.alloc(allocator.ctx, total_size, alignof(CM_ENTRY_USE));
-    if (entries == NULL) {
-        return false;
-    }
-    assert(cm_isaligned((cm_usize)entries, alignof(CM_ENTRY_USE)) == true);
-
-    cm_u8* ctrl = entries + ctrl_offset;
-    memset(ctrl, CM_CTRL_EMPTY, num_buckets + CM_GROUP_SIZE);
-
-    cm_usize growth_left = cm_bucket_mask_to_capacity(num_buckets - 1);
-    *map = Cheesemap<CM_TEMPLATE_USE> { growth_left, 0, num_buckets - 1, ctrl };
-    return true;
-}
-
-CM_TEMPLATE
-void cheesemap_drop(Cheesemap<CM_TEMPLATE_USE>* map, Cheesemap_Allocator allocator)
-{
-    if (map->ctrl == CM_INIT_CTRL)
-        return;
-
-    cm_usize ctrl_offset;
-    cm_usize total_size = cheesemap_layout_for<CM_TEMPLATE_USE>(map->bucket_mask + 1, ctrl_offset);
-
-    cm_u8* entries = map->ctrl - ctrl_offset;
-    allocator.dealloc(allocator.ctx, entries, total_size, alignof(CM_ENTRY_USE));
-    *map = cheesemap_new<CM_TEMPLATE_USE>();
-}
-
-CM_TEMPLATE
-inline bool cheesemap_find_insert_index_in_group(const Cheesemap<CM_TEMPLATE_USE>* map, cm_group group,
-    const Cheesemap_Probe_Sequence* seq, cm_usize* offset)
-{
-    cm_bitmask mask = cm_group_match_empty_or_deleted(group);
-    if (mask == 0)
-        return false;
-
-    cm_usize lowest = cm_bitmask_trailing_zeros(mask);
-    *offset = (seq->pos + lowest) & map->bucket_mask;
-    return true;
-}
-
-CM_TEMPLATE
-inline cm_u8* cheesemap_ctrl_at(const Cheesemap<CM_TEMPLATE_USE>* map, cm_usize index)
-{
-    assert(index < map->bucket_mask + 1);
-    return map->ctrl + index;
-}
-
-CM_TEMPLATE
-inline cm_usize cheesemap_find_insert_index(const Cheesemap<CM_TEMPLATE_USE>* map, cm_usize h1)
-{
-    cm_usize bucket_mask = map->bucket_mask;
-    auto seq = Cheesemap_Probe_Sequence {
-        h1 & bucket_mask,
-        0,
-    };
-
-    while (true) {
-        cm_u8* ctrl_at = cheesemap_ctrl_at(map, seq.pos);
-        cm_group group = cm_group_load(ctrl_at);
-
-        cm_usize offset;
-        if (cheesemap_find_insert_index_in_group(map, group, &seq, &offset)) {
-            return offset;
-        }
-
-        cm_probe_sequence_next(&seq, bucket_mask);
-    }
-}
-
-CM_TEMPLATE
-CM_ENTRY_USE* cheesemap_entry_at(const Cheesemap<CM_TEMPLATE_USE>* map, cm_usize index)
-{
-    assert(map->bucket_mask != 0);
-    assert(index < map->bucket_mask + 1);
-
-    auto end = reinterpret_cast<CM_ENTRY_USE*>(map->ctrl);
-    return end - index - 1;
-}
-
-CM_TEMPLATE
-void cheesemap_set_ctrl(Cheesemap<CM_TEMPLATE_USE>* map, cm_usize index, cm_u8 tag)
-{
-    cm_usize index2 = ((index - CM_GROUP_SIZE) & map->bucket_mask) + CM_GROUP_SIZE;
-
-    map->ctrl[index] = tag;
-    map->ctrl[index2] = tag;
-}
-
-CM_TEMPLATE
-void cheesemap_insert_at(Cheesemap<CM_TEMPLATE_USE>* map, cm_usize index, cm_u8 tag, const CM_ENTRY_USE* entry)
-{
-    cm_u8 old_ctrl = map->ctrl[index];
-    map->growth_left -= static_cast<cm_usize>(cm_is_empty(old_ctrl));
-    cheesemap_set_ctrl(map, index, tag);
-    map->count += 1;
-
-    auto at = cheesemap_entry_at(map, index);
-    *at = *entry;
-}
-
-CM_TEMPLATE
-bool cheesemap_resize(Cheesemap<CM_TEMPLATE_USE>* map, Cheesemap_Allocator allocator, cm_usize new_capacity)
-{
-    Cheesemap<CM_TEMPLATE_USE> new_map = cheesemap_new<CM_TEMPLATE_USE>();
-    if (!cheesemap_new_with(&new_map, allocator, new_capacity)) {
-        return false;
-    }
-
-    Cheesemap_Full_Iter iter = cm_full_iter_new(map->ctrl, map->count);
-    cm_usize ctrl_offset;
-
-    while (cm_full_iter_next(&iter, &ctrl_offset)) {
-        CM_ENTRY_USE* src = cheesemap_entry_at(map, ctrl_offset);
-        cm_hash hash = Hash(src->key);
-
-        cm_usize insert_at = cheesemap_find_insert_index(&new_map, cm_h1(hash));
-        cheesemap_set_ctrl(&new_map, insert_at, cm_h2(hash));
-
-        CM_ENTRY_USE* dest = cheesemap_entry_at(&new_map, insert_at);
-        memcpy(dest, src, sizeof(CM_ENTRY_USE));
-    }
-
-    new_map.count = map->count;
-    new_map.growth_left -= map->count;
-
-    cheesemap_drop(map, allocator);
-    *map = new_map;
-    return true;
-}
-
-CM_TEMPLATE
-void cheesemap_shrink_to_fit(Cheesemap<CM_TEMPLATE_USE>* map, Cheesemap_Allocator allocator)
-{
-    // Shrink to fit recalculates capacity based on current item count.
-    // The minimum capacity is 1 because cheesemap_new_with always allocates
-    // at least CM_GROUP_SIZE buckets, ensuring we never have zero capacity.
-    // Infact it doesn't matter whether we take the max with 1 or CM_GROUP_SIZE.
-    cm_usize new_capacity = CM_MAX(map->count, 1);
-    if (new_capacity >= cm_bucket_mask_to_capacity(map->bucket_mask)) {
-        return;
-    }
-
-    // Shrinking is best-effort: a failed reallocation leaves the existing table
-    // untouched, so we keep the current map and report nothing.
-    (void)cheesemap_resize(map, allocator, new_capacity);
-}
-
-CM_TEMPLATE
-bool cheesemap_reserve(Cheesemap<CM_TEMPLATE_USE>* map, Cheesemap_Allocator allocator, cm_usize additional)
-{
-    // growth_left is the remaining insertion budget before the table must
-    // grow. DELETED tombstones spend this budget without raising count, so
-    // the resize decision must use growth_left, not count.
-    if (additional <= map->growth_left) {
-        return true;
-    }
-
-    // TODO: check overflow
-    cm_usize min_capacity = map->count + additional;
-    cm_usize total_capacity = cm_bucket_mask_to_capacity(map->bucket_mask);
-    // TODO: check for rehash if we have plenty of space left
-
-    return cheesemap_resize(map, allocator, CM_MAX(min_capacity, total_capacity + 1));
-}
-
-CM_TEMPLATE
-inline bool cheesemap_find(const Cheesemap<CM_TEMPLATE_USE>* map, K key, cm_usize h1, cm_u8 h2, cm_usize* out_index)
-{
-    cm_usize bucket_mask = map->bucket_mask;
-    auto seq = Cheesemap_Probe_Sequence {
-        h1 & bucket_mask,
-        0,
-    };
-
-    while (true) {
-        cm_u8* ctrl_at = cheesemap_ctrl_at(map, seq.pos);
-        cm_group group = cm_group_load(ctrl_at);
-
-        Cheesemap_Bitmask_Iter match_mask = cm_group_match_tag(group, h2);
-        cm_usize bit;
-
-        while (cm_bitmask_iter_next(&match_mask, &bit)) {
-            cm_usize index = (seq.pos + bit) & bucket_mask;
-
-            auto entry = cheesemap_entry_at(map, index);
-            if (Compare(key, entry->key)) {
-                *out_index = index;
-                return true;
-            }
-        }
-
-        if (cm_group_match_empty(group) != 0) {
-            return false;
-        }
-
-        cm_probe_sequence_next(&seq, bucket_mask);
-    }
-}
-
-CM_TEMPLATE
-bool cheesemap_lookup(const Cheesemap<CM_TEMPLATE_USE>* map, K key, V* out_value)
-{
-    cm_hash hash = Hash(key);
-    cm_usize h1 = cm_h1(hash);
-    cm_u8 h2 = cm_h2(hash);
-
-    cm_usize index;
-    if (cheesemap_find(map, key, h1, h2, &index)) {
-        auto entry = cheesemap_entry_at(map, index);
-        *out_value = entry->value;
-        return true;
-    }
-
+  uint8_t* entries =
+      allocator.alloc(allocator.ctx, total_size, alignof(CM_ENTRY_USE));
+  if (entries == NULL)
+  {
     return false;
+  }
+  assert(is_aligned((size_t)entries, alignof(CM_ENTRY_USE)) == true);
+
+  uint8_t* ctrl = entries + ctrl_offset;
+  memset(ctrl, Ctrl_Empty, num_buckets + CM_GROUP_SIZE);
+
+  size_t growth_left = bucket_mask_to_capacity(num_buckets - 1);
+  *map = Map<CM_TEMPLATE_USE>{growth_left, 0, num_buckets - 1, ctrl};
+  return true;
 }
 
 CM_TEMPLATE
-inline bool cheesemap_find_or_find_insert(const Cheesemap<CM_TEMPLATE_USE>* map, K key, cm_usize h1, cm_u8 h2, cm_usize* insert_at)
+void map_drop(Map<CM_TEMPLATE_USE>* map, IAllocator allocator)
 {
-    bool has_insert_index = false;
-    cm_usize bucket_mask = map->bucket_mask;
-    auto seq = Cheesemap_Probe_Sequence {
-        h1 & bucket_mask,
-        0,
-    };
+  if (map->ctrl == Init_Ctrl) return;
 
-    while (true) {
-        cm_u8* ctrl_at = cheesemap_ctrl_at(map, seq.pos);
-        cm_group group = cm_group_load(ctrl_at);
+  size_t ctrl_offset;
+  size_t total_size =
+      layout_for<CM_TEMPLATE_USE>(map->bucket_mask + 1, ctrl_offset);
 
-        Cheesemap_Bitmask_Iter match_iter = cm_group_match_tag(group, h2);
-        cm_usize bit;
-
-        // Check every slot in this group whose H2 fingerprint matches `h2`.
-        // Fingerprints are only a fast filter, so each candidate still needs a
-        // full key comparison before it can be reported as found. When no
-        // candidate matches, probing continues below and the first available
-        // empty/deleted slot is remembered as the possible insertion point.
-        while (cm_bitmask_iter_next(&match_iter, &bit)) {
-            cm_usize index = (seq.pos + bit) & bucket_mask;
-
-            auto entry = cheesemap_entry_at(map, index);
-            if (Compare(key, entry->key)) {
-                *insert_at = index;
-                return true;
-            }
-        }
-
-        if (!has_insert_index) {
-            has_insert_index = cheesemap_find_insert_index_in_group(map, group, &seq, insert_at);
-        }
-
-        if (has_insert_index && cm_group_match_empty(group) != 0) {
-            return false;
-        }
-
-        cm_probe_sequence_next(&seq, bucket_mask);
-    }
+  uint8_t* entries = map->ctrl - ctrl_offset;
+  allocator.dealloc(allocator.ctx, entries, total_size, alignof(CM_ENTRY_USE));
+  *map = map_new<CM_TEMPLATE_USE>();
 }
 
-CM_TEMPLATE bool
-cheesemap_insert(Cheesemap<CM_TEMPLATE_USE>* map, Cheesemap_Allocator allocator, K key, V value)
+CM_TEMPLATE
+inline bool find_insert_index_in_group(const Map<CM_TEMPLATE_USE>* map,
+                                       Group group, const Probe_Sequence* seq,
+                                       size_t* offset)
 {
+  Bitmask mask = group_match_empty_or_deleted(group);
+  if (mask == 0) return false;
 
-    cm_hash hash = Hash(key);
-    cm_usize h1 = cm_h1(hash);
-    cm_u8 h2 = cm_h2(hash);
+  size_t lowest = bitmask_trailing_zeros(mask);
+  *offset = (seq->pos + lowest) & map->bucket_mask;
+  return true;
+}
 
-    cm_usize insert_at;
-    if (cheesemap_find_or_find_insert(map, key, h1, h2, &insert_at)) {
-        auto entry = cheesemap_entry_at(map, insert_at);
-        entry->value = value;
+CM_TEMPLATE
+inline uint8_t* ctrl_at(const Map<CM_TEMPLATE_USE>* map, size_t index)
+{
+  assert(index < map->bucket_mask + 1);
+  return map->ctrl + index;
+}
+
+CM_TEMPLATE
+inline size_t find_insert_index(const Map<CM_TEMPLATE_USE>* map, size_t h1)
+{
+  size_t bucket_mask = map->bucket_mask;
+  auto seq = Probe_Sequence{
+      h1 & bucket_mask,
+      0,
+  };
+
+  while (true)
+  {
+    uint8_t* ctrl = ctrl_at(map, seq.pos);
+    Group group = group_load(ctrl);
+
+    size_t offset;
+    if (find_insert_index_in_group(map, group, &seq, &offset))
+    {
+      return offset;
+    }
+
+    probe_sequence_next(&seq, bucket_mask);
+  }
+}
+
+CM_TEMPLATE
+CM_ENTRY_USE* entry_at(const Map<CM_TEMPLATE_USE>* map, size_t index)
+{
+  assert(map->bucket_mask != 0);
+  assert(index < map->bucket_mask + 1);
+
+  auto end = (CM_ENTRY_USE*)map->ctrl;
+  return end - index - 1;
+}
+
+CM_TEMPLATE
+void ctrl_set(Map<CM_TEMPLATE_USE>* map, size_t index, uint8_t tag)
+{
+  size_t index2 = ((index - CM_GROUP_SIZE) & map->bucket_mask) + CM_GROUP_SIZE;
+
+  map->ctrl[index] = tag;
+  map->ctrl[index2] = tag;
+}
+
+CM_TEMPLATE
+void insert_at(Map<CM_TEMPLATE_USE>* map, size_t index, uint8_t tag,
+               const CM_ENTRY_USE* entry)
+{
+  uint8_t old_ctrl = map->ctrl[index];
+  map->growth_left -= (size_t)is_empty(old_ctrl);
+  ctrl_set(map, index, tag);
+  map->count += 1;
+
+  auto at = entry_at(map, index);
+  *at = *entry;
+}
+
+CM_TEMPLATE
+bool resize(Map<CM_TEMPLATE_USE>* map, IAllocator allocator,
+            size_t new_capacity)
+{
+  Map<CM_TEMPLATE_USE> new_map = map_new<CM_TEMPLATE_USE>();
+  if (!map_new_with(&new_map, allocator, new_capacity))
+  {
+    return false;
+  }
+
+  Full_Iter iter = full_iter_new(map->ctrl, map->count);
+  size_t ctrl_offset;
+
+  while (full_iter_next(&iter, &ctrl_offset))
+  {
+    CM_ENTRY_USE* src = entry_at(map, ctrl_offset);
+    Hash hash = Hasher(src->key);
+
+    size_t insert_index = find_insert_index(&new_map, h1(hash));
+    ctrl_set(&new_map, insert_index, h2(hash));
+
+    CM_ENTRY_USE* dest = entry_at(&new_map, insert_index);
+    memcpy(dest, src, sizeof(CM_ENTRY_USE));
+  }
+
+  new_map.count = map->count;
+  new_map.growth_left -= map->count;
+
+  map_drop(map, allocator);
+  *map = new_map;
+  return true;
+}
+
+CM_TEMPLATE
+void map_shrink_to_fit(Map<CM_TEMPLATE_USE>* map, IAllocator allocator)
+{
+  // Shrink to fit recalculates capacity based on current item count.
+  // The minimum capacity is 1 because map_new_with always allocates
+  // at least CM_GROUP_SIZE buckets, ensuring we never have zero capacity.
+  // Infact it doesn't matter whether we take the max with 1 or CM_GROUP_SIZE.
+  size_t new_capacity = CM_MAX(map->count, 1);
+  if (new_capacity >= bucket_mask_to_capacity(map->bucket_mask))
+  {
+    return;
+  }
+
+  // Shrinking is best-effort: a failed reallocation leaves the existing table
+  // untouched, so we keep the current map and report nothing.
+  (void)resize(map, allocator, new_capacity);
+}
+
+CM_TEMPLATE
+bool map_reserve(Map<CM_TEMPLATE_USE>* map, IAllocator allocator,
+                 size_t additional)
+{
+  // growth_left is the remaining insertion budget before the table must
+  // grow. DELETED tombstones spend this budget without raising count, so
+  // the resize decision must use growth_left, not count.
+  if (additional <= map->growth_left)
+  {
+    return true;
+  }
+
+  // TODO: check overflow
+  size_t min_capacity = map->count + additional;
+  size_t total_capacity = bucket_mask_to_capacity(map->bucket_mask);
+  // TODO: check for rehash if we have plenty of space left
+
+  return resize(map, allocator, CM_MAX(min_capacity, total_capacity + 1));
+}
+
+CM_TEMPLATE
+inline bool find(const Map<CM_TEMPLATE_USE>* map, K key, size_t h1, uint8_t h2,
+                 size_t* out_index)
+{
+  size_t bucket_mask = map->bucket_mask;
+  auto seq = Probe_Sequence{
+      h1 & bucket_mask,
+      0,
+  };
+
+  while (true)
+  {
+    uint8_t* ctrl = ctrl_at(map, seq.pos);
+    Group group = group_load(ctrl);
+
+    Bitmask_Iter match_mask = group_match_tag(group, h2);
+    size_t bit;
+
+    while (bitmask_iter_next(&match_mask, &bit))
+    {
+      size_t index = (seq.pos + bit) & bucket_mask;
+
+      auto entry = entry_at(map, index);
+      if (Comparer(key, entry->key))
+      {
+        *out_index = index;
         return true;
+      }
     }
 
-    if (map->growth_left == 0 && cm_is_empty(map->ctrl[insert_at])) {
-        if (!cheesemap_reserve(map, allocator, 1)) {
-            return false;
-        }
-
-        insert_at = cheesemap_find_insert_index(map, h1);
+    if (group_match_empty(group) != 0)
+    {
+      return false;
     }
 
-    CM_ENTRY_USE entry = cm_entry_new(key, value);
-    cheesemap_insert_at(map, insert_at, h2, &entry);
-    return true;
+    probe_sequence_next(&seq, bucket_mask);
+  }
 }
 
 CM_TEMPLATE
-bool cheesemap_remove(Cheesemap<CM_TEMPLATE_USE>* map, K key)
+bool map_lookup(const Map<CM_TEMPLATE_USE>* map, K key, V* out_value)
 {
-    cm_hash hash = Hash(key);
-    cm_usize index;
-    if (!cheesemap_find(map, key, cm_h1(hash), cm_h2(hash), &index)) {
-        return false;
-    }
-    cm_usize index_before = (index - CM_GROUP_SIZE) & map->bucket_mask;
+  Hash hash = Hasher(key);
+  size_t h1_val = h1(hash);
+  uint8_t h2_val = h2(hash);
 
-    // We can't always mark a removed slot EMPTY. Lookup stops probing at EMPTY,
-    // so clearing a slot in the middle of a probe chain could make displaced
-    // entries unreachable.
-    //
-    // To decide whether the slot can become EMPTY, we examine the surrounding
-    // control bytes. `leading_zeros(empty_before)` counts the contiguous
-    // non-EMPTY bytes ending at the previous group, while
-    // `trailing_zeros(empty_after)` counts the contiguous non-EMPTY bytes
-    // starting at the current group.
-    //
-    // If the combined span is at least one full group wide, then this slot may
-    // still be part of an active probe chain and must remain DELETED so probing
-    // continues through it.
-    //
-    // Otherwise there is already an EMPTY nearby, meaning lookups would terminate
-    // naturally anyway, so we can safely convert this slot back to EMPTY and
-    // restore one growth slot.
-
-    cm_group group_before = cm_group_load(cheesemap_ctrl_at(map, index_before));
-    cm_group group_after = cm_group_load(cheesemap_ctrl_at(map, index));
-    cm_bitmask empty_before = cm_group_match_empty(group_before);
-    cm_bitmask empty_after = cm_group_match_empty(group_after);
-
-    cm_usize num_zeros = cm_bitmask_leading_zeros(empty_before) + cm_bitmask_trailing_zeros(empty_after);
-
-    if (num_zeros >= CM_GROUP_SIZE) {
-        cheesemap_set_ctrl(map, index, CM_CTRL_DELETED);
-    } else {
-        cheesemap_set_ctrl(map, index, CM_CTRL_EMPTY);
-        map->growth_left += 1;
-    }
-
-    map->count -= 1;
+  size_t index;
+  if (find(map, key, h1_val, h2_val, &index))
+  {
+    auto entry = entry_at(map, index);
+    *out_value = entry->value;
     return true;
+  }
+
+  return false;
+}
+
+CM_TEMPLATE
+inline bool find_or_find_insert(const Map<CM_TEMPLATE_USE>* map, K key,
+                                size_t h1, uint8_t h2, size_t* insert_index)
+{
+  bool has_insert_index = false;
+  size_t bucket_mask = map->bucket_mask;
+  auto seq = Probe_Sequence{
+      h1 & bucket_mask,
+      0,
+  };
+
+  while (true)
+  {
+    uint8_t* ctrl = ctrl_at(map, seq.pos);
+    Group group = group_load(ctrl);
+
+    Bitmask_Iter match_iter = group_match_tag(group, h2);
+    size_t bit;
+
+    // Check every slot in this group whose H2 fingerprint matches `h2`.
+    // Fingerprints are only a fast filter, so each candidate still needs a
+    // full key comparison before it can be reported as found. When no
+    // candidate matches, probing continues below and the first available
+    // empty/deleted slot is remembered as the possible insertion point.
+    while (bitmask_iter_next(&match_iter, &bit))
+    {
+      size_t index = (seq.pos + bit) & bucket_mask;
+
+      auto entry = entry_at(map, index);
+      if (Comparer(key, entry->key))
+      {
+        *insert_index = index;
+        return true;
+      }
+    }
+
+    if (!has_insert_index)
+    {
+      has_insert_index =
+          find_insert_index_in_group(map, group, &seq, insert_index);
+    }
+
+    if (has_insert_index && group_match_empty(group) != 0)
+    {
+      return false;
+    }
+
+    probe_sequence_next(&seq, bucket_mask);
+  }
+}
+
+CM_TEMPLATE bool map_insert(Map<CM_TEMPLATE_USE>* map, IAllocator allocator,
+                            K key, V value)
+{
+  Hash hash = Hasher(key);
+  size_t h1_val = h1(hash);
+  uint8_t h2_val = h2(hash);
+
+  size_t insert_index;
+  if (find_or_find_insert(map, key, h1_val, h2_val, &insert_index))
+  {
+    auto entry = entry_at(map, insert_index);
+    entry->value = value;
+    return true;
+  }
+
+  if (map->growth_left == 0 && is_empty(map->ctrl[insert_index]))
+  {
+    if (!map_reserve(map, allocator, 1))
+    {
+      return false;
+    }
+
+    insert_index = find_insert_index(map, h1_val);
+  }
+
+  CM_ENTRY_USE entry = entry_new(key, value);
+  insert_at(map, insert_index, h2_val, &entry);
+  return true;
+}
+
+CM_TEMPLATE
+bool map_remove(Map<CM_TEMPLATE_USE>* map, K key)
+{
+  Hash hash = Hasher(key);
+  size_t index;
+  if (!find(map, key, h1(hash), h2(hash), &index))
+  {
+    return false;
+  }
+  size_t index_before = (index - CM_GROUP_SIZE) & map->bucket_mask;
+
+  // We can't always mark a removed slot EMPTY. Lookup stops probing at EMPTY,
+  // so clearing a slot in the middle of a probe chain could make displaced
+  // entries unreachable.
+  //
+  // To decide whether the slot can become EMPTY, we examine the surrounding
+  // control bytes. `leading_zeros(empty_before)` counts the contiguous
+  // non-EMPTY bytes ending at the previous group, while
+  // `trailing_zeros(empty_after)` counts the contiguous non-EMPTY bytes
+  // starting at the current group.
+  //
+  // If the combined span is at least one full group wide, then this slot may
+  // still be part of an active probe chain and must remain DELETED so probing
+  // continues through it.
+  //
+  // Otherwise there is already an EMPTY nearby, meaning lookups would terminate
+  // naturally anyway, so we can safely convert this slot back to EMPTY and
+  // restore one growth slot.
+
+  Group group_before = group_load(ctrl_at(map, index_before));
+  Group group_after = group_load(ctrl_at(map, index));
+  Bitmask empty_before = group_match_empty(group_before);
+  Bitmask empty_after = group_match_empty(group_after);
+
+  size_t num_zeros =
+      bitmask_leading_zeros(empty_before) + bitmask_trailing_zeros(empty_after);
+
+  if (num_zeros >= CM_GROUP_SIZE)
+  {
+    ctrl_set(map, index, Ctrl_Deleted);
+  }
+  else
+  {
+    ctrl_set(map, index, Ctrl_Empty);
+    map->growth_left += 1;
+  }
+
+  map->count -= 1;
+  return true;
 }
 
 /**
  *
- * Iterator for occupied Cheesemap entries.
+ * Iterator for occupied Map entries.
  *
  * Iteration follows bucket order, skipping EMPTY and DELETED slots. Each call
- * to cm_iter_next returns pointers to the stored key and value. The key pointer
- * is const because changing a key in place would break the table's hash
+ * to map_iter_next returns pointers to the stored key and value. The key
+ * pointer is const because changing a key in place would break the table's hash
  * invariant.
  */
 
 CM_TEMPLATE
-struct Cheesemap_Iter {
-    Cheesemap_Full_Iter full_iter;
-    Cheesemap<CM_TEMPLATE_USE>* map;
+struct Map_Iter
+{
+  Full_Iter full_iter;
+  Map<CM_TEMPLATE_USE>* map;
 };
 
 CM_TEMPLATE
-Cheesemap_Iter<CM_TEMPLATE_USE> cm_iter_new(Cheesemap<CM_TEMPLATE_USE>* map)
+Map_Iter<CM_TEMPLATE_USE> map_iter_new(Map<CM_TEMPLATE_USE>* map)
 {
-    return Cheesemap_Iter<CM_TEMPLATE_USE> { cm_full_iter_new(map->ctrl, map->count), map };
+  return Map_Iter<CM_TEMPLATE_USE>{full_iter_new(map->ctrl, map->count), map};
 }
 
 CM_TEMPLATE
-bool cm_iter_next(Cheesemap_Iter<CM_TEMPLATE_USE>* iter, K const** out_key, V** out_value)
+bool map_iter_next(Map_Iter<CM_TEMPLATE_USE>* iter, K const** out_key,
+                   V** out_value)
 {
-    cm_usize offset;
+  size_t offset;
 
-    if (!cm_full_iter_next(&iter->full_iter, &offset)) {
-        return false;
-    }
+  if (!full_iter_next(&iter->full_iter, &offset))
+  {
+    return false;
+  }
 
-    auto entry = cheesemap_entry_at(iter->map, offset);
-    *out_key = &entry->key;
-    *out_value = &entry->value;
+  auto entry = entry_at(iter->map, offset);
+  *out_key = &entry->key;
+  *out_value = &entry->value;
 
-    return true;
+  return true;
 }
 
-/**
- *
- * Template parameter macros used to keep the public Cheeseset function
- * signatures short.
- *
- * K: key type
- * Hash: function pointer that hashes a key
- * Compare: function pointer that compares two keys for equality
- *
- * Allocation is supplied at runtime through a Cheesemap_Allocator passed by
- * value to each method that allocates or deallocates.
- */
+struct Unit
+{};
 
-#define CM_CS_TEMPLATE          \
-    template <                  \
-        typename K,             \
-        Cheesemap_Hash<K> Hash, \
-        Cheesemap_Compare<K> Compare>
-#define CM_CS_TEMPLATE_USE K, Hash, Compare
-
-struct Cheeseset_Unit { };
-static_assert(sizeof(Cheeseset_Unit) == 1, "Cheeseset_Unit must be exactly one byte");
-
-#define CM_CS_INNER_TEMPLATE_USE K, Cheeseset_Unit, Hash, Compare
+static_assert(sizeof(Unit) == 1, "Unit must be exactly one byte");
 
 /**
  *
- * Cheeseset is a Swiss-table-style hash set backed by Cheesemap.
+ * Set is a Swiss-table-style hash set backed by Map.
  *
- * The set stores keys in the backing map and uses Cheeseset_Unit as the value.
- * This gives Cheeseset the same probing, allocation, resizing, and removal
- * behavior as Cheesemap while exposing only membership operations.
+ * The set stores keys in the backing map and uses Unit as the value. This gives
+ * Set the same probing, allocation, resizing, and removal behavior as Map while
+ * exposing only membership operations.
  */
 
 CM_CS_TEMPLATE
-struct Cheeseset {
-    Cheesemap<CM_CS_INNER_TEMPLATE_USE> map;
+struct Set
+{
+  Map<CM_CS_INNER_TEMPLATE_USE> map;
 };
 
 CM_CS_TEMPLATE
-Cheeseset<CM_CS_TEMPLATE_USE> cheeseset_new()
+Set<CM_CS_TEMPLATE_USE> set_new()
 {
-    return Cheeseset<CM_CS_TEMPLATE_USE> { cheesemap_new<CM_CS_INNER_TEMPLATE_USE>() };
+  return Set<CM_CS_TEMPLATE_USE>{map_new<CM_CS_INNER_TEMPLATE_USE>()};
 }
 
 CM_CS_TEMPLATE
-bool cheeseset_new_with(Cheeseset<CM_CS_TEMPLATE_USE>* set, Cheesemap_Allocator allocator, cm_usize init_capacity)
+bool set_new_with(Set<CM_CS_TEMPLATE_USE>* set, IAllocator allocator,
+                  size_t init_capacity)
 {
-    return cheesemap_new_with(&set->map, allocator, init_capacity);
+  return map_new_with(&set->map, allocator, init_capacity);
 }
 
 CM_CS_TEMPLATE
-void cheeseset_drop(Cheeseset<CM_CS_TEMPLATE_USE>* set, Cheesemap_Allocator allocator)
+void set_drop(Set<CM_CS_TEMPLATE_USE>* set, IAllocator allocator)
 {
-    cheesemap_drop(&set->map, allocator);
+  map_drop(&set->map, allocator);
 }
 
 CM_CS_TEMPLATE
-bool cheeseset_insert(Cheeseset<CM_CS_TEMPLATE_USE>* set, Cheesemap_Allocator allocator, K key)
+bool set_insert(Set<CM_CS_TEMPLATE_USE>* set, IAllocator allocator, K key)
 {
-    return cheesemap_insert(&set->map, allocator, key, Cheeseset_Unit { });
+  return map_insert(&set->map, allocator, key, Unit{});
 }
 
 CM_CS_TEMPLATE
-bool cheeseset_lookup(const Cheeseset<CM_CS_TEMPLATE_USE>* set, K key)
+bool set_lookup(const Set<CM_CS_TEMPLATE_USE>* set, K key)
 {
-    Cheeseset_Unit unit;
-    return cheesemap_lookup(&set->map, key, &unit);
+  Unit unit;
+  return map_lookup(&set->map, key, &unit);
 }
 
 CM_CS_TEMPLATE
-bool cheeseset_remove(Cheeseset<CM_CS_TEMPLATE_USE>* set, K key)
+bool set_remove(Set<CM_CS_TEMPLATE_USE>* set, K key)
 {
-    return cheesemap_remove(&set->map, key);
+  return map_remove(&set->map, key);
 }
 
 /**
  *
- * Iterator for occupied Cheeseset entries.
+ * Iterator for occupied Set entries.
  *
  * Iteration follows bucket order, skipping EMPTY and DELETED slots. Each call
- * to cheeseset_iter_next returns a pointer to the stored key. The key pointer
- * is const because changing a key in place would break the table's hash
- * invariant.
+ * to set_iter_next returns a pointer to the stored key. The key pointer is
+ * const because changing a key in place would break the table's hash invariant.
  */
 
 CM_CS_TEMPLATE
-struct Cheeseset_Iter {
-    Cheesemap_Iter<CM_CS_INNER_TEMPLATE_USE> map_iter;
+struct Set_Iter
+{
+  Map_Iter<CM_CS_INNER_TEMPLATE_USE> map_iter;
 };
 
 CM_CS_TEMPLATE
-Cheeseset_Iter<CM_CS_TEMPLATE_USE> cheeseset_iter_new(Cheeseset<CM_CS_TEMPLATE_USE>* set)
+Set_Iter<CM_CS_TEMPLATE_USE> set_iter_new(Set<CM_CS_TEMPLATE_USE>* set)
 {
-    return Cheeseset_Iter<CM_CS_TEMPLATE_USE> { cm_iter_new(&set->map) };
+  return Set_Iter<CM_CS_TEMPLATE_USE>{map_iter_new(&set->map)};
 }
 
 CM_CS_TEMPLATE
-bool cheeseset_iter_next(Cheeseset_Iter<CM_CS_TEMPLATE_USE>* iter, K const** out_key)
+bool set_iter_next(Set_Iter<CM_CS_TEMPLATE_USE>* iter, K const** out_key)
 {
-    K const* key;
-    Cheeseset_Unit* value;
+  K const* key;
+  Unit* value;
 
-    if (!cm_iter_next(&iter->map_iter, &key, &value)) {
-        return false;
-    }
+  if (!map_iter_next(&iter->map_iter, &key, &value))
+  {
+    return false;
+  }
 
-    *out_key = key;
-    return true;
+  *out_key = key;
+  return true;
 }
+
+}  // namespace cheesemap
