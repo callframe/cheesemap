@@ -6,10 +6,7 @@ namespace
 
 struct Hasher
 {
-  std::size_t operator()(BenchKey key) const
-  {
-    return static_cast<std::size_t>(BenchHashKey(key));
-  }
+  std::size_t operator()(BenchKey key) const { return static_cast<std::size_t>(BenchHashKey(key)); }
 };
 
 class AbseilAdapter

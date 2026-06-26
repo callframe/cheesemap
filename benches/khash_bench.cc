@@ -12,10 +12,7 @@ static inline khint_t BenchKhashHash(khint64_t key)
   return static_cast<khint_t>(BenchHashKey(static_cast<BenchKey>(key)));
 }
 
-static inline int BenchKhashEqual(khint64_t lhs, khint64_t rhs)
-{
-  return lhs == rhs;
-}
+static inline int BenchKhashEqual(khint64_t lhs, khint64_t rhs) { return lhs == rhs; }
 
 KHASH_INIT(bench_u64, khint64_t, BenchValue, 1, BenchKhashHash, BenchKhashEqual)
 
@@ -49,8 +46,7 @@ class KhashAdapter
   bool insert(BenchKey key, BenchValue value)
   {
     int status = 0;
-    khiter_t iter =
-        kh_put(bench_u64, map_, static_cast<khint64_t>(key), &status);
+    khiter_t iter = kh_put(bench_u64, map_, static_cast<khint64_t>(key), &status);
     if (status < 0)
     {
       return false;

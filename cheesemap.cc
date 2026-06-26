@@ -55,8 +55,7 @@
  * each method that allocates or deallocates.
  */
 
-#define CM_TEMPLATE \
-  template <typename K, typename V, Hash_Fn<K> Hasher, Compare_Fn<K> Comparer>
+#define CM_TEMPLATE template <typename K, typename V, Hash_Fn<K> Hasher, Compare_Fn<K> Comparer>
 #define CM_TEMPLATE_USE K, V, Hasher, Comparer
 
 /**
@@ -69,8 +68,7 @@
  * Comparer: function pointer that compares two keys for equality
  */
 
-#define CM_CS_TEMPLATE \
-  template <typename K, Hash_Fn<K> Hasher, Compare_Fn<K> Comparer>
+#define CM_CS_TEMPLATE template <typename K, Hash_Fn<K> Hasher, Compare_Fn<K> Comparer>
 #define CM_CS_TEMPLATE_USE K, Hasher, Comparer
 #define CM_CS_INNER_TEMPLATE_USE K, Unit, Hasher, Comparer
 
@@ -92,8 +90,7 @@ using Compare_Fn = bool (*)(K key0, K key1);
 
 using Alloc_Fn = uint8_t* (*)(uint8_t* ctx, size_t size, size_t align);
 
-using Dealloc_Fn = void (*)(uint8_t* ctx, uint8_t* ptr, size_t size,
-                            size_t align);
+using Dealloc_Fn = void (*)(uint8_t* ctx, uint8_t* ptr, size_t size, size_t align);
 
 struct IAllocator
 {
@@ -122,15 +119,14 @@ enum : uint8_t
   //
   // ctrl ops
   // -1 as i8, all bits set, top bit = 1
-  Ctrl_Empty = 0xFF,  // 0b1111_1111
-                      // -128 as i8, top bit = 1
-  Ctrl_Deleted =
-      0x80,         // 0b1000_0000
-                    // FULL entries have top bit = 0, lower 7 bits are H2 hash
-  H2_Mask = 0x7F,   // 0b0111_1111
-                    // Mask to get bottom bit
-  Ctrl_End = 0x01,  // 0b0000_0001
-                    // Number of fingerprint bits
+  Ctrl_Empty = 0xFF,    // 0b1111_1111
+                        // -128 as i8, top bit = 1
+  Ctrl_Deleted = 0x80,  // 0b1000_0000
+                        // FULL entries have top bit = 0, lower 7 bits are H2 hash
+  H2_Mask = 0x7F,       // 0b0111_1111
+                        // Mask to get bottom bit
+  Ctrl_End = 0x01,      // 0b0000_0001
+                        // Number of fingerprint bits
   Fp_Size = 7,
   //
   // aux
@@ -166,10 +162,7 @@ inline Bitmask group_match_full(Group group);
  */
 
 #if defined(__SSE2__)
-inline Group group_load(const uint8_t* ctrl)
-{
-  return _mm_loadu_si128((const Group*)ctrl);
-}
+inline Group group_load(const uint8_t* ctrl) { return _mm_loadu_si128((const Group*)ctrl); }
 
 inline Bitmask group_match_tag(Group group, uint8_t tag)
 {
@@ -187,10 +180,7 @@ inline Bitmask group_match_empty_or_deleted(Group group)
   return _mm_movemask_epi8(group);
 }
 
-inline Bitmask group_match_empty(Group group)
-{
-  return group_match_tag(group, Ctrl_Empty);
-}
+inline Bitmask group_match_empty(Group group) { return group_match_tag(group, Ctrl_Empty); }
 
 inline Bitmask group_match_full(Group group)
 {
@@ -206,10 +196,7 @@ inline Bitmask group_match_full(Group group)
  */
 
 #if !defined(CM_IS_SIMD)
-inline Group group_repeat(uint8_t v)
-{
-  return (Group)v * (((Group)-1) / (uint8_t)~0);
-}
+inline Group group_repeat(uint8_t v) { return (Group)v * (((Group)-1) / (uint8_t)~0); }
 
 inline Group group_load(const uint8_t* ctrl)
 {
@@ -321,10 +308,7 @@ inline uint32_t bitmask_leading_zeros(Bitmask mask)
 #endif
 }
 
-[[maybe_unused]] inline bool is_pow2(size_t x)
-{
-  return x != 0 && (x & (x - 1)) == 0;
-}
+[[maybe_unused]] inline bool is_pow2(size_t x) { return x != 0 && (x & (x - 1)) == 0; }
 
 inline size_t next_pow2(size_t x)
 {
@@ -540,10 +524,7 @@ struct Map
 };
 
 CM_TEMPLATE
-Map<CM_TEMPLATE_USE> map_new()
-{
-  return Map<CM_TEMPLATE_USE>{0, 0, 0, (uint8_t*)Init_Ctrl};
-}
+Map<CM_TEMPLATE_USE> map_new() { return Map<CM_TEMPLATE_USE>{0, 0, 0, (uint8_t*)Init_Ctrl}; }
 
 CM_TEMPLATE
 inline size_t layout_for(size_t num_buckets, size_t& out_ctrl_offset)
@@ -576,8 +557,7 @@ inline size_t layout_for(size_t num_buckets, size_t& out_ctrl_offset)
 }
 
 CM_TEMPLATE
-bool map_new_with(Map<CM_TEMPLATE_USE>* map, IAllocator allocator,
-                  size_t init_capacity)
+bool map_new_with(Map<CM_TEMPLATE_USE>* map, IAllocator allocator, size_t init_capacity)
 {
   size_t num_buckets = capacity_to_bucket(init_capacity);
 
@@ -586,8 +566,7 @@ bool map_new_with(Map<CM_TEMPLATE_USE>* map, IAllocator allocator,
 
   assert(total_size % alignof(CM_ENTRY_USE) == 0);
 
-  uint8_t* entries =
-      allocator.alloc(allocator.ctx, total_size, alignof(CM_ENTRY_USE));
+  uint8_t* entries = allocator.alloc(allocator.ctx, total_size, alignof(CM_ENTRY_USE));
   if (entries == NULL)
   {
     return false;
@@ -608,8 +587,7 @@ void map_drop(Map<CM_TEMPLATE_USE>* map, IAllocator allocator)
   if (map->ctrl == Init_Ctrl) return;
 
   size_t ctrl_offset;
-  size_t total_size =
-      layout_for<CM_TEMPLATE_USE>(map->bucket_mask + 1, ctrl_offset);
+  size_t total_size = layout_for<CM_TEMPLATE_USE>(map->bucket_mask + 1, ctrl_offset);
 
   uint8_t* entries = map->ctrl - ctrl_offset;
   allocator.dealloc(allocator.ctx, entries, total_size, alignof(CM_ENTRY_USE));
@@ -617,9 +595,8 @@ void map_drop(Map<CM_TEMPLATE_USE>* map, IAllocator allocator)
 }
 
 CM_TEMPLATE
-inline bool find_insert_index_in_group(const Map<CM_TEMPLATE_USE>* map,
-                                       Group group, const Probe_Sequence* seq,
-                                       size_t* offset)
+inline bool find_insert_index_in_group(const Map<CM_TEMPLATE_USE>* map, Group group,
+                                       const Probe_Sequence* seq, size_t* offset)
 {
   Bitmask mask = group_match_empty_or_deleted(group);
   if (mask == 0) return false;
@@ -680,8 +657,7 @@ void ctrl_set(Map<CM_TEMPLATE_USE>* map, size_t index, uint8_t tag)
 }
 
 CM_TEMPLATE
-void insert_at(Map<CM_TEMPLATE_USE>* map, size_t index, uint8_t tag,
-               const CM_ENTRY_USE* entry)
+void insert_at(Map<CM_TEMPLATE_USE>* map, size_t index, uint8_t tag, const CM_ENTRY_USE* entry)
 {
   uint8_t old_ctrl = map->ctrl[index];
   map->growth_left -= (size_t)is_empty(old_ctrl);
@@ -693,8 +669,7 @@ void insert_at(Map<CM_TEMPLATE_USE>* map, size_t index, uint8_t tag,
 }
 
 CM_TEMPLATE
-bool resize(Map<CM_TEMPLATE_USE>* map, IAllocator allocator,
-            size_t new_capacity)
+bool resize(Map<CM_TEMPLATE_USE>* map, IAllocator allocator, size_t new_capacity)
 {
   Map<CM_TEMPLATE_USE> new_map = map_new<CM_TEMPLATE_USE>();
   if (!map_new_with(&new_map, allocator, new_capacity))
@@ -744,8 +719,7 @@ void map_shrink_to_fit(Map<CM_TEMPLATE_USE>* map, IAllocator allocator)
 }
 
 CM_TEMPLATE
-bool map_reserve(Map<CM_TEMPLATE_USE>* map, IAllocator allocator,
-                 size_t additional)
+bool map_reserve(Map<CM_TEMPLATE_USE>* map, IAllocator allocator, size_t additional)
 {
   // growth_left is the remaining insertion budget before the table must
   // grow. DELETED tombstones spend this budget without raising count, so
@@ -764,8 +738,7 @@ bool map_reserve(Map<CM_TEMPLATE_USE>* map, IAllocator allocator,
 }
 
 CM_TEMPLATE
-inline bool find(const Map<CM_TEMPLATE_USE>* map, K key, size_t h1, uint8_t h2,
-                 size_t* out_index)
+inline bool find(const Map<CM_TEMPLATE_USE>* map, K key, size_t h1, uint8_t h2, size_t* out_index)
 {
   size_t bucket_mask = map->bucket_mask;
   auto seq = Probe_Sequence{
@@ -821,8 +794,8 @@ bool map_lookup(const Map<CM_TEMPLATE_USE>* map, K key, V* out_value)
 }
 
 CM_TEMPLATE
-inline bool find_or_find_insert(const Map<CM_TEMPLATE_USE>* map, K key,
-                                size_t h1, uint8_t h2, size_t* insert_index)
+inline bool find_or_find_insert(const Map<CM_TEMPLATE_USE>* map, K key, size_t h1, uint8_t h2,
+                                size_t* insert_index)
 {
   bool has_insert_index = false;
   size_t bucket_mask = map->bucket_mask;
@@ -858,8 +831,7 @@ inline bool find_or_find_insert(const Map<CM_TEMPLATE_USE>* map, K key,
 
     if (!has_insert_index)
     {
-      has_insert_index =
-          find_insert_index_in_group(map, group, &seq, insert_index);
+      has_insert_index = find_insert_index_in_group(map, group, &seq, insert_index);
     }
 
     if (has_insert_index && group_match_empty(group) != 0)
@@ -871,8 +843,7 @@ inline bool find_or_find_insert(const Map<CM_TEMPLATE_USE>* map, K key,
   }
 }
 
-CM_TEMPLATE bool map_insert(Map<CM_TEMPLATE_USE>* map, IAllocator allocator,
-                            K key, V value)
+CM_TEMPLATE bool map_insert(Map<CM_TEMPLATE_USE>* map, IAllocator allocator, K key, V value)
 {
   Hash hash = Hasher(key);
   size_t h1_val = h1(hash);
@@ -935,8 +906,7 @@ bool map_remove(Map<CM_TEMPLATE_USE>* map, K key)
   Bitmask empty_before = group_match_empty(group_before);
   Bitmask empty_after = group_match_empty(group_after);
 
-  size_t num_zeros =
-      bitmask_leading_zeros(empty_before) + bitmask_trailing_zeros(empty_after);
+  size_t num_zeros = bitmask_leading_zeros(empty_before) + bitmask_trailing_zeros(empty_after);
 
   if (num_zeros >= CM_GROUP_SIZE)
   {
@@ -976,8 +946,7 @@ Map_Iter<CM_TEMPLATE_USE> map_iter_new(Map<CM_TEMPLATE_USE>* map)
 }
 
 CM_TEMPLATE
-bool map_iter_next(Map_Iter<CM_TEMPLATE_USE>* iter, K const** out_key,
-                   V** out_value)
+bool map_iter_next(Map_Iter<CM_TEMPLATE_USE>* iter, K const** out_key, V** out_value)
 {
   size_t offset;
 
@@ -1020,8 +989,7 @@ Set<CM_CS_TEMPLATE_USE> set_new()
 }
 
 CM_CS_TEMPLATE
-bool set_new_with(Set<CM_CS_TEMPLATE_USE>* set, IAllocator allocator,
-                  size_t init_capacity)
+bool set_new_with(Set<CM_CS_TEMPLATE_USE>* set, IAllocator allocator, size_t init_capacity)
 {
   return map_new_with(&set->map, allocator, init_capacity);
 }
@@ -1046,10 +1014,7 @@ bool set_lookup(const Set<CM_CS_TEMPLATE_USE>* set, K key)
 }
 
 CM_CS_TEMPLATE
-bool set_remove(Set<CM_CS_TEMPLATE_USE>* set, K key)
-{
-  return map_remove(&set->map, key);
-}
+bool set_remove(Set<CM_CS_TEMPLATE_USE>* set, K key) { return map_remove(&set->map, key); }
 
 /**
  *

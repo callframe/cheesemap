@@ -50,7 +50,9 @@ def run_command(cmd: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
     )
 
 
-def run_bench(binary: Path, min_time: str, repetitions: int, benchmark_filter: str) -> dict:
+def run_bench(
+    binary: Path, min_time: str, repetitions: int, benchmark_filter: str
+) -> dict:
     cmd = [
         str(binary),
         "--benchmark_format=json",
@@ -74,7 +76,9 @@ def parse_name(name: str) -> tuple[str, str, int] | None:
     return implementation, operation, int(size)
 
 
-def collect_results(root: Path, build_dir: Path, min_time: str, repetitions: int, benchmark_filter: str) -> dict:
+def collect_results(
+    root: Path, build_dir: Path, min_time: str, repetitions: int, benchmark_filter: str
+) -> dict:
     runs = []
     rows = []
 
@@ -130,7 +134,9 @@ def plot_results(rows: list[dict], output: Path) -> None:
         implementation = DISPLAY_NAMES.get(row["implementation"], row["implementation"])
         size = row["size"]
         throughput = row["items_per_second"] / 1_000_000.0
-        by_operation[operation].setdefault(implementation, []).append((size, throughput))
+        by_operation[operation].setdefault(implementation, []).append(
+            (size, throughput)
+        )
 
     fig, axes = plt.subplots(len(OPERATIONS), 1, figsize=(11, 17), sharex=True)
     fig.suptitle("Hash Map Throughput", fontsize=16)
@@ -149,7 +155,13 @@ def plot_results(rows: list[dict], output: Path) -> None:
 
     axes[-1].set_xlabel("items")
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc="upper center", ncol=min(len(labels), 5), bbox_to_anchor=(0.5, 0.965))
+    fig.legend(
+        handles,
+        labels,
+        loc="upper center",
+        ncol=min(len(labels), 5),
+        bbox_to_anchor=(0.5, 0.965),
+    )
     fig.tight_layout(rect=(0, 0, 1, 0.94))
     fig.savefig(output, dpi=160)
     plt.close(fig)
@@ -157,19 +169,37 @@ def plot_results(rows: list[dict], output: Path) -> None:
 
 def main() -> int:
     root = repo_root()
-    parser = argparse.ArgumentParser(description="Run all hash map benchmarks and plot throughput.")
-    parser.add_argument("--build-dir", default="build", help="CMake/Ninja build directory.")
-    parser.add_argument("--output-dir", default=Path(__file__).resolve().parent, help="Directory for JSON and chart output.")
-    parser.add_argument("--min-time", default="1s", help="Google Benchmark --benchmark_min_time value.")
-    parser.add_argument("--repetitions", type=int, default=3, help="Google Benchmark repetitions.")
-    parser.add_argument("--filter", default=".*", help="Google Benchmark filter applied to every binary.")
+    parser = argparse.ArgumentParser(
+        description="Run all hash map benchmarks and plot throughput."
+    )
+    parser.add_argument(
+        "--build-dir", default="build", help="CMake/Ninja build directory."
+    )
+    parser.add_argument(
+        "--output-dir",
+        default=Path(__file__).resolve().parent,
+        help="Directory for JSON and chart output.",
+    )
+    parser.add_argument(
+        "--min-time", default="1s", help="Google Benchmark --benchmark_min_time value."
+    )
+    parser.add_argument(
+        "--repetitions", type=int, default=3, help="Google Benchmark repetitions."
+    )
+    parser.add_argument(
+        "--filter",
+        default=".*",
+        help="Google Benchmark filter applied to every binary.",
+    )
     args = parser.parse_args()
 
     build_dir = (root / args.build_dir).resolve()
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    result = collect_results(root, build_dir, args.min_time, args.repetitions, args.filter)
+    result = collect_results(
+        root, build_dir, args.min_time, args.repetitions, args.filter
+    )
     json_path = output_dir / "benchmarks.json"
     chart_path = output_dir / "throughput.png"
 

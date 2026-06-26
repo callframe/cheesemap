@@ -73,8 +73,7 @@ void BenchFill(Adapter& map, const BenchDataSet& data, std::size_t size)
   }
 }
 
-inline void BenchSetThroughput(benchmark::State& state,
-                               std::size_t items_per_iteration)
+inline void BenchSetThroughput(benchmark::State& state, std::size_t items_per_iteration)
 {
   state.SetItemsProcessed(static_cast<std::int64_t>(state.iterations()) *
                           static_cast<std::int64_t>(items_per_iteration));
@@ -192,28 +191,23 @@ template <typename Adapter>
 void RegisterBenchmarks(std::string_view name)
 {
   const std::string prefix(name);
-  benchmark::RegisterBenchmark((prefix + "/insert").c_str(),
-                               &BM_Insert<Adapter>)
+  benchmark::RegisterBenchmark((prefix + "/insert").c_str(), &BM_Insert<Adapter>)
       ->RangeMultiplier(4)
       ->Range(1 << 10, 1 << 20)
       ->Unit(benchmark::kMillisecond);
-  benchmark::RegisterBenchmark((prefix + "/replace").c_str(),
-                               &BM_Replace<Adapter>)
+  benchmark::RegisterBenchmark((prefix + "/replace").c_str(), &BM_Replace<Adapter>)
       ->RangeMultiplier(4)
       ->Range(1 << 10, 1 << 20)
       ->Unit(benchmark::kMillisecond);
-  benchmark::RegisterBenchmark((prefix + "/lookup_hit").c_str(),
-                               &BM_LookupHit<Adapter>)
+  benchmark::RegisterBenchmark((prefix + "/lookup_hit").c_str(), &BM_LookupHit<Adapter>)
       ->RangeMultiplier(4)
       ->Range(1 << 10, 1 << 20)
       ->Unit(benchmark::kMillisecond);
-  benchmark::RegisterBenchmark((prefix + "/lookup_miss").c_str(),
-                               &BM_LookupMiss<Adapter>)
+  benchmark::RegisterBenchmark((prefix + "/lookup_miss").c_str(), &BM_LookupMiss<Adapter>)
       ->RangeMultiplier(4)
       ->Range(1 << 10, 1 << 20)
       ->Unit(benchmark::kMillisecond);
-  benchmark::RegisterBenchmark((prefix + "/remove").c_str(),
-                               &BM_Remove<Adapter>)
+  benchmark::RegisterBenchmark((prefix + "/remove").c_str(), &BM_Remove<Adapter>)
       ->RangeMultiplier(4)
       ->Range(1 << 10, 1 << 20)
       ->Unit(benchmark::kMillisecond);

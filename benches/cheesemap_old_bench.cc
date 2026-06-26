@@ -6,8 +6,7 @@
 #include "cheesemap.h"
 #include "common.h"
 
-extern "C" void CM_PANIC_SYM(const char* file, cm_u32 line, const char* fmt,
-                             ...)
+extern "C" void CM_PANIC_SYM(const char* file, cm_u32 line, const char* fmt, ...)
 {
   std::fprintf(stderr, "%s:%u: ", file, line);
   va_list args;
@@ -54,8 +53,8 @@ class CheesemapOldAdapter
  public:
   CheesemapOldAdapter()
   {
-    cm_init(&map_, sizeof(BenchKey), alignof(BenchKey), sizeof(BenchValue),
-            alignof(BenchValue), nullptr, Hash, Equal, Alloc, Dealloc);
+    cm_init(&map_, sizeof(BenchKey), alignof(BenchKey), sizeof(BenchValue), alignof(BenchValue),
+            nullptr, Hash, Equal, Alloc, Dealloc);
   }
 
   ~CheesemapOldAdapter() { cm_drop(&map_); }
@@ -71,15 +70,9 @@ class CheesemapOldAdapter
     }
   }
 
-  bool insert(BenchKey key, BenchValue value)
-  {
-    return cm_insert_(&map_, key, value);
-  }
+  bool insert(BenchKey key, BenchValue value) { return cm_insert_(&map_, key, value); }
 
-  bool replace(BenchKey key, BenchValue value)
-  {
-    return cm_insert_(&map_, key, value);
-  }
+  bool replace(BenchKey key, BenchValue value) { return cm_insert_(&map_, key, value); }
 
   bool lookup(BenchKey key, BenchValue& value) const
   {
