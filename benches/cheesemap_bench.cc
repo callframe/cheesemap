@@ -1,12 +1,15 @@
 #include "cheesemap.cc"
 #include "common.h"
 
+template <>
+struct cheesemap::Mapable<BenchKey>
+{
+  static cheesemap::Hash hash(BenchKey key) { return BenchHashKey(key); }
+  static bool compare(BenchKey lhs, BenchKey rhs) { return lhs == rhs; }
+};
+
 namespace
 {
-
-cheesemap::Hash Hash(BenchKey key) { return BenchHashKey(key); }
-
-bool Equal(BenchKey lhs, BenchKey rhs) { return lhs == rhs; }
 
 uint8_t* alloc(uint8_t* ctx, size_t size, size_t align)
 {
@@ -21,7 +24,7 @@ void dealloc(uint8_t* ctx, uint8_t* ptr, size_t size, size_t align)
   operator delete(ptr, std::align_val_t(align), std::nothrow);
 }
 
-using Map = cheesemap::Map<BenchKey, BenchValue, Hash, Equal>;
+using Map = cheesemap::Map<BenchKey, BenchValue>;
 
 class CheesemapAdapter
 {
@@ -60,7 +63,7 @@ class CheesemapAdapter
 
  private:
   cheesemap::IAllocator allocator_ = {nullptr, alloc, dealloc};
-  Map map_ = cheesemap::map_new<BenchKey, BenchValue, Hash, Equal>();
+  Map map_ = cheesemap::map_new<BenchKey, BenchValue>();
 };
 
 const bool registered = []

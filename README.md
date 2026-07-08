@@ -12,8 +12,8 @@ Cheesemap is intentionally one public header-style source file:
 It will stay that way.
 
 Use it when you want a direct hash table and want to provide hashing and
-equality functions yourself, along with an allocator that supplies allocation
-and deallocation.
+equality yourself, through a `Mapable` trait specialization per key type, along
+with an allocator that supplies allocation and deallocation.
 
 Cheesemap is designed for C-style C++ use. It does not try to integrate with
 C++ object lifetime rules. There is no rule of three, rule of five, copy
@@ -86,10 +86,21 @@ management did at the time. The runtime libc was GNU libc 6.
 Use
 ---
 
-Include `cheesemap.cc` and instantiate `cheesemap::Map` with key type, value
-type, hash function, and equality function:
+Include `cheesemap.cc`. Hashing and equality come from the `cheesemap::Mapable`
+trait, which you specialize for each key type with two static members. A key
+type without a `Mapable` specialization is a compile error; Cheesemap makes no
+assumptions about how an arbitrary type should hash or compare:
 
-    using Map = cheesemap::Map<Key, Value, Hash, Equal>;
+    template <>
+    struct cheesemap::Mapable<Key>
+    {
+      static cheesemap::Hash hash(Key key)          { return /* ... */; }
+      static bool compare(Key lhs, Key rhs)         { return lhs == rhs; }
+    };
+
+Then instantiate `cheesemap::Map` with the key and value types:
+
+    using Map = cheesemap::Map<Key, Value>;
 
 Allocation is supplied at runtime, not as a template parameter. Implement the
 `cheesemap::IAllocator` interface and pass it by value to each operation that may
