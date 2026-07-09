@@ -33,10 +33,10 @@
 
 #define CM_GROUP_SIZE 16
 #define CM_BITMASK_STRIDE 1
-#define CM_IS_SIMD
+#define CM_NO_FALLBACK
 #endif
 
-#if !defined(CM_IS_SIMD)
+#if !defined(CM_NO_FALLBACK)
 #define CM_GROUP_SIZE __SIZEOF_POINTER__
 #define CM_BITMASK_STRIDE CHAR_BIT
 #endif
@@ -117,7 +117,6 @@ bool compare(K a, K b)
 }
 
 using Alloc_Fn = uint8_t* (*)(uint8_t* ctx, size_t size, size_t align);
-
 using Dealloc_Fn = void (*)(uint8_t* ctx, uint8_t* ptr, size_t size, size_t align);
 
 struct IAllocator
@@ -167,7 +166,7 @@ using Group = __m128i;
 using Bitmask = uint16_t;
 #endif
 
-#if !defined(CM_IS_SIMD)
+#if !defined(CM_NO_FALLBACK)
 using Group = size_t;
 using Bitmask = Group;
 #endif
@@ -223,7 +222,7 @@ inline Bitmask group_match_full(Group group)
  * Scalar implementation of the group actions
  */
 
-#if !defined(CM_IS_SIMD)
+#if !defined(CM_NO_FALLBACK)
 inline Group group_repeat(uint8_t v) { return (Group)v * (((Group)-1) / (uint8_t)~0); }
 
 inline Group group_load(const uint8_t* ctrl)
