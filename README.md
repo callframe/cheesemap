@@ -13,7 +13,8 @@ It will stay that way.
 
 Use it when you want a direct hash table and want to provide hashing and
 equality yourself, through a `Mapable` trait specialization per key type, along
-with an allocator that supplies allocation and deallocation.
+with an `Allocatable` trait specialization that supplies allocation and
+deallocation.
 
 Cheesemap is designed for C-style C++ use. It does not try to integrate with
 C++ object lifetime rules. There is no rule of three, rule of five, copy
@@ -98,14 +99,27 @@ assumptions about how an arbitrary type should hash or compare:
       static bool compare(Key lhs, Key rhs)         { return lhs == rhs; }
     };
 
-Then instantiate `cheesemap::Map` with the key and value types:
+Allocation comes from the `cheesemap::Allocatable` trait, which you specialize
+for the allocator's state type with two static members:
 
-    using Map = cheesemap::Map<Key, Value>;
+    template <>
+    struct cheesemap::Allocatable<State>
+    {
+      static uint8_t* alloc(State* state, size_t size, size_t align)             { return /* ... */; }
+      static void dealloc(State* state, uint8_t* ptr, size_t size, size_t align) { /* ... */ }
+    };
 
-Allocation is supplied at runtime, not as a template parameter. Implement the
-`cheesemap::IAllocator` interface and pass it by value to each operation that may
-allocate or deallocate (`map_new_with`, `map_drop`, `map_reserve`, `map_insert`).
-The map itself does not store the allocator. Operations take the map by pointer.
+Then instantiate `cheesemap::Map` with the key type, value type, and allocator
+state type:
+
+    using Map = cheesemap::Map<Key, Value, State>;
+
+The state is passed by pointer to a constructor (`map_new`, `map_new_with`) and
+stored in the map; the other operations read it from there and take the map by
+pointer. An allocator that keeps no state uses `void`:
+
+    using Map = cheesemap::Map<Key, Value, void>;
+    Map map = cheesemap::map_new<Key, Value, void>(nullptr);
 
 The basic operations are:
 
@@ -126,8 +140,8 @@ Conventions
 All declarations live in a single `cheesemap` namespace, so identifiers carry no
 redundant prefix.
 
-  - Types use `Ada_Case` (`Map`, `Probe_Sequence`, `Full_Iter`). The allocator
-    interface is `IAllocator`.
+  - Types use `Ada_Case` (`Map`, `Probe_Sequence`, `Full_Iter`). The key and
+    allocator traits are `Mapable` and `Allocatable`.
   - Functions and function-like macros use `lower_case`. The two containers share
     the namespace, so their public operations keep a `map_`/`set_` qualifier
     (`map_insert`, `set_lookup`); internal helpers are unqualified (`group_load`,

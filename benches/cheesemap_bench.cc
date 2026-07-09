@@ -8,37 +8,41 @@ struct cheesemap::Mapable<BenchKey>
   static bool compare(BenchKey lhs, BenchKey rhs) { return lhs == rhs; }
 };
 
+template <>
+struct cheesemap::Allocatable<void>
+{
+  static uint8_t* alloc(void* state, size_t size, size_t align)
+  {
+    (void)state;
+    return new (std::align_val_t(align), std::nothrow) uint8_t[size];
+  }
+
+  static void dealloc(void* state, uint8_t* ptr, size_t size, size_t align)
+  {
+    (void)state;
+    (void)size;
+    operator delete(ptr, std::align_val_t(align), std::nothrow);
+  }
+};
+
 namespace
 {
 
-uint8_t* alloc(uint8_t* ctx, size_t size, size_t align)
-{
-  (void)ctx;
-  return new (std::align_val_t(align), std::nothrow) uint8_t[size];
-}
-
-void dealloc(uint8_t* ctx, uint8_t* ptr, size_t size, size_t align)
-{
-  (void)ctx;
-  (void)size;
-  operator delete(ptr, std::align_val_t(align), std::nothrow);
-}
-
-using Map = cheesemap::Map<BenchKey, BenchValue>;
+using Map = cheesemap::Map<BenchKey, BenchValue, void>;
 
 class CheesemapAdapter
 {
  public:
   CheesemapAdapter() = default;
 
-  ~CheesemapAdapter() { cheesemap::map_drop(&map_, allocator_); }
+  ~CheesemapAdapter() { cheesemap::map_drop(&map_); }
 
   CheesemapAdapter(const CheesemapAdapter&) = delete;
   CheesemapAdapter& operator=(const CheesemapAdapter&) = delete;
 
   void reserve(std::size_t size)
   {
-    if (!cheesemap::map_new_with(&map_, allocator_, size))
+    if (!cheesemap::map_new_with<BenchKey, BenchValue, void>(&map_, nullptr, size))
     {
       std::abort();
     }
@@ -46,12 +50,12 @@ class CheesemapAdapter
 
   bool insert(BenchKey key, BenchValue value)
   {
-    return cheesemap::map_insert(&map_, allocator_, key, value);
+    return cheesemap::map_insert(&map_, key, value);
   }
 
   bool replace(BenchKey key, BenchValue value)
   {
-    return cheesemap::map_insert(&map_, allocator_, key, value);
+    return cheesemap::map_insert(&map_, key, value);
   }
 
   bool lookup(BenchKey key, BenchValue& value) const
@@ -62,8 +66,7 @@ class CheesemapAdapter
   bool remove(BenchKey key) { return cheesemap::map_remove(&map_, key); }
 
  private:
-  cheesemap::IAllocator allocator_ = {nullptr, alloc, dealloc};
-  Map map_ = cheesemap::map_new<BenchKey, BenchValue>();
+  Map map_ = cheesemap::map_new<BenchKey, BenchValue, void>(nullptr);
 };
 
 const bool registered = []

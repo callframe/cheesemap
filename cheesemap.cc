@@ -53,11 +53,17 @@ namespace cheesemap
 
 using Hash = uint64_t;
 
-template <typename K>
-using Hash_Fn = Hash (*)(K key);
+/**
+ *
+ * Always_False is false for every type, but only once instantiated. A primary
+ * trait template can static_assert on it to fail with a readable message when
+ * used, while still being a well-formed template until then. Unlike
+ * `sizeof(T) == 0` this is also valid for T = void.
+ */
 
-template <typename K>
-using Compare_Fn = bool (*)(K key0, K key1);
+template <typename>
+struct Always_False : std::false_type
+{};
 
 /**
  *
@@ -75,7 +81,7 @@ using Compare_Fn = bool (*)(K key0, K key1);
 template <typename K>
 struct Mapable
 {
-  static_assert(sizeof(K) == 0,
+  static_assert(Always_False<K>::value,
                 "cheesemap::Mapable<K> is not specialized for this key type. Provide a "
                 "specialization with `static Hash hash(K)` and `static bool compare(K, K)`.");
 };
@@ -116,15 +122,64 @@ bool compare(K a, K b)
   return Mapable<K>::compare(a, b);
 }
 
-using Alloc_Fn = uint8_t* (*)(uint8_t* ctx, size_t size, size_t align);
-using Dealloc_Fn = void (*)(uint8_t* ctx, uint8_t* ptr, size_t size, size_t align);
+/**
+ *
+ * Allocatable is the allocator trait. The allocator's state type A may be used
+ * only if the caller specializes Allocatable<A> with two static members:
+ *
+ *   static uint8_t* alloc(A* state, size_t size, size_t align);
+ *   static void dealloc(A* state, uint8_t* ptr, size_t size, size_t align);
+ *
+ * State is passed by pointer. As with Mapable, an unspecialized state type is a
+ * hard compile error.
+ */
 
-struct IAllocator
+template <typename A>
+struct Allocatable
 {
-  uint8_t* ctx;
-  Alloc_Fn alloc;
-  Dealloc_Fn dealloc;
+  static_assert(Always_False<A>::value,
+                "cheesemap::Allocatable<A> is not specialized for this allocator state type. "
+                "Provide a specialization with `static uint8_t* alloc(A*, size_t, size_t)` and "
+                "`static void dealloc(A*, uint8_t*, size_t, size_t)`.");
 };
+
+/**
+ *
+ * Allocatable_Check validates that an Allocatable<A> specialization exposes
+ * alloc and dealloc with the exact expected signatures. A specialization with
+ * the wrong signature fails these asserts with a message naming the signature
+ * the trait requires.
+ */
+
+template <typename A>
+struct Allocatable_Check
+{
+  using Alloc_Fn = uint8_t* (*)(A*, size_t, size_t);
+  using In_Alloc_Fn = decltype(&Allocatable<A>::alloc);
+  static_assert(std::is_same<Alloc_Fn, In_Alloc_Fn>::value,
+                "cheesemap::Allocatable<A>::alloc must be `static uint8_t* alloc(A*, size_t, "
+                "size_t)`.");
+
+  using Dealloc_Fn = void (*)(A*, uint8_t*, size_t, size_t);
+  using In_Dealloc_Fn = decltype(&Allocatable<A>::dealloc);
+  static_assert(std::is_same<Dealloc_Fn, In_Dealloc_Fn>::value,
+                "cheesemap::Allocatable<A>::dealloc must be `static void dealloc(A*, uint8_t*, "
+                "size_t, size_t)`.");
+};
+
+template <typename A>
+uint8_t* alloc(A* state, size_t size, size_t align)
+{
+  (void)Allocatable_Check<A>{};
+  return Allocatable<A>::alloc(state, size, align);
+}
+
+template <typename A>
+void dealloc(A* state, uint8_t* ptr, size_t size, size_t align)
+{
+  (void)Allocatable_Check<A>{};
+  Allocatable<A>::dealloc(state, ptr, size, align);
+}
 
 /**
  *
@@ -541,19 +596,20 @@ inline Entry<K, V> entry_new(K key, V value)
  * more empty buckets may be filled before the table must grow.
  */
 
-template <typename K, typename V>
+template <typename K, typename V, typename A>
 struct Map
 {
   size_t growth_left;
   size_t count;
   size_t bucket_mask;
   uint8_t* ctrl;
+  A* allocator;
 };
 
-template <typename K, typename V>
-Map<K, V> map_new()
+template <typename K, typename V, typename A>
+Map<K, V, A> map_new(A* allocator)
 {
-  return Map<K, V>{0, 0, 0, (uint8_t*)Init_Ctrl};
+  return Map<K, V, A>{0, 0, 0, (uint8_t*)Init_Ctrl, allocator};
 }
 
 template <typename K, typename V>
@@ -586,8 +642,8 @@ inline size_t layout_for(size_t num_buckets, size_t& out_ctrl_offset)
   return total_size;
 }
 
-template <typename K, typename V>
-bool map_new_with(Map<K, V>* map, IAllocator allocator, size_t init_capacity)
+template <typename K, typename V, typename A>
+bool map_new_with(Map<K, V, A>* map, A* allocator, size_t init_capacity)
 {
   size_t num_buckets = capacity_to_bucket(init_capacity);
 
@@ -596,7 +652,7 @@ bool map_new_with(Map<K, V>* map, IAllocator allocator, size_t init_capacity)
 
   assert(total_size % alignof(CM_ENTRY_USE) == 0);
 
-  uint8_t* entries = allocator.alloc(allocator.ctx, total_size, alignof(CM_ENTRY_USE));
+  uint8_t* entries = alloc(allocator, total_size, alignof(CM_ENTRY_USE));
   if (entries == NULL)
   {
     return false;
@@ -607,26 +663,27 @@ bool map_new_with(Map<K, V>* map, IAllocator allocator, size_t init_capacity)
   memset(ctrl, Ctrl_Empty, num_buckets + CM_GROUP_SIZE);
 
   size_t growth_left = bucket_mask_to_capacity(num_buckets - 1);
-  *map = Map<K, V>{growth_left, 0, num_buckets - 1, ctrl};
+  *map = Map<K, V, A>{growth_left, 0, num_buckets - 1, ctrl, allocator};
   return true;
 }
 
-template <typename K, typename V>
-void map_drop(Map<K, V>* map, IAllocator allocator)
+template <typename K, typename V, typename A>
+void map_drop(Map<K, V, A>* map)
 {
+  A* allocator = map->allocator;
   if (map->ctrl == Init_Ctrl) return;
 
   size_t ctrl_offset;
   size_t total_size = layout_for<K, V>(map->bucket_mask + 1, ctrl_offset);
 
   uint8_t* entries = map->ctrl - ctrl_offset;
-  allocator.dealloc(allocator.ctx, entries, total_size, alignof(CM_ENTRY_USE));
-  *map = map_new<K, V>();
+  dealloc(allocator, entries, total_size, alignof(CM_ENTRY_USE));
+  *map = map_new<K, V, A>(allocator);
 }
 
-template <typename K, typename V>
-inline bool find_insert_index_in_group(const Map<K, V>* map, Group group, const Probe_Sequence* seq,
-                                       size_t* offset)
+template <typename K, typename V, typename A>
+inline bool find_insert_index_in_group(const Map<K, V, A>* map, Group group,
+                                       const Probe_Sequence* seq, size_t* offset)
 {
   Bitmask mask = group_match_empty_or_deleted(group);
   if (mask == 0) return false;
@@ -636,15 +693,15 @@ inline bool find_insert_index_in_group(const Map<K, V>* map, Group group, const 
   return true;
 }
 
-template <typename K, typename V>
-inline uint8_t* ctrl_at(const Map<K, V>* map, size_t index)
+template <typename K, typename V, typename A>
+inline uint8_t* ctrl_at(const Map<K, V, A>* map, size_t index)
 {
   assert(index < map->bucket_mask + 1);
   return map->ctrl + index;
 }
 
-template <typename K, typename V>
-inline size_t find_insert_index(const Map<K, V>* map, size_t h1)
+template <typename K, typename V, typename A>
+inline size_t find_insert_index(const Map<K, V, A>* map, size_t h1)
 {
   size_t bucket_mask = map->bucket_mask;
   auto seq = Probe_Sequence{
@@ -667,8 +724,8 @@ inline size_t find_insert_index(const Map<K, V>* map, size_t h1)
   }
 }
 
-template <typename K, typename V>
-CM_ENTRY_USE* entry_at(const Map<K, V>* map, size_t index)
+template <typename K, typename V, typename A>
+CM_ENTRY_USE* entry_at(const Map<K, V, A>* map, size_t index)
 {
   assert(map->bucket_mask != 0);
   assert(index < map->bucket_mask + 1);
@@ -677,8 +734,8 @@ CM_ENTRY_USE* entry_at(const Map<K, V>* map, size_t index)
   return end - index - 1;
 }
 
-template <typename K, typename V>
-void ctrl_set(Map<K, V>* map, size_t index, uint8_t tag)
+template <typename K, typename V, typename A>
+void ctrl_set(Map<K, V, A>* map, size_t index, uint8_t tag)
 {
   size_t index2 = ((index - CM_GROUP_SIZE) & map->bucket_mask) + CM_GROUP_SIZE;
 
@@ -686,8 +743,8 @@ void ctrl_set(Map<K, V>* map, size_t index, uint8_t tag)
   map->ctrl[index2] = tag;
 }
 
-template <typename K, typename V>
-void insert_at(Map<K, V>* map, size_t index, uint8_t tag, const CM_ENTRY_USE* entry)
+template <typename K, typename V, typename A>
+void insert_at(Map<K, V, A>* map, size_t index, uint8_t tag, const CM_ENTRY_USE* entry)
 {
   uint8_t old_ctrl = map->ctrl[index];
   map->growth_left -= (size_t)is_empty(old_ctrl);
@@ -698,11 +755,11 @@ void insert_at(Map<K, V>* map, size_t index, uint8_t tag, const CM_ENTRY_USE* en
   *at = *entry;
 }
 
-template <typename K, typename V>
-bool resize(Map<K, V>* map, IAllocator allocator, size_t new_capacity)
+template <typename K, typename V, typename A>
+bool resize(Map<K, V, A>* map, size_t new_capacity)
 {
-  Map<K, V> new_map = map_new<K, V>();
-  if (!map_new_with(&new_map, allocator, new_capacity))
+  Map<K, V, A> new_map = {};
+  if (!map_new_with(&new_map, map->allocator, new_capacity))
   {
     return false;
   }
@@ -725,13 +782,13 @@ bool resize(Map<K, V>* map, IAllocator allocator, size_t new_capacity)
   new_map.count = map->count;
   new_map.growth_left -= map->count;
 
-  map_drop(map, allocator);
+  map_drop(map);
   *map = new_map;
   return true;
 }
 
-template <typename K, typename V>
-void map_shrink_to_fit(Map<K, V>* map, IAllocator allocator)
+template <typename K, typename V, typename A>
+void map_shrink_to_fit(Map<K, V, A>* map)
 {
   // Shrink to fit recalculates capacity based on current item count.
   // The minimum capacity is 1 because map_new_with always allocates
@@ -745,11 +802,11 @@ void map_shrink_to_fit(Map<K, V>* map, IAllocator allocator)
 
   // Shrinking is best-effort: a failed reallocation leaves the existing table
   // untouched, so we keep the current map and report nothing.
-  (void)resize(map, allocator, new_capacity);
+  (void)resize(map, new_capacity);
 }
 
-template <typename K, typename V>
-bool map_reserve(Map<K, V>* map, IAllocator allocator, size_t additional)
+template <typename K, typename V, typename A>
+bool map_reserve(Map<K, V, A>* map, size_t additional)
 {
   // growth_left is the remaining insertion budget before the table must
   // grow. DELETED tombstones spend this budget without raising count, so
@@ -764,11 +821,11 @@ bool map_reserve(Map<K, V>* map, IAllocator allocator, size_t additional)
   size_t total_capacity = bucket_mask_to_capacity(map->bucket_mask);
   // TODO: check for rehash if we have plenty of space left
 
-  return resize(map, allocator, CM_MAX(min_capacity, total_capacity + 1));
+  return resize(map, CM_MAX(min_capacity, total_capacity + 1));
 }
 
-template <typename K, typename V>
-inline bool find(const Map<K, V>* map, K key, size_t h1, uint8_t h2, size_t* out_index)
+template <typename K, typename V, typename A>
+inline bool find(const Map<K, V, A>* map, K key, size_t h1, uint8_t h2, size_t* out_index)
 {
   size_t bucket_mask = map->bucket_mask;
   auto seq = Probe_Sequence{
@@ -805,8 +862,8 @@ inline bool find(const Map<K, V>* map, K key, size_t h1, uint8_t h2, size_t* out
   }
 }
 
-template <typename K, typename V>
-bool map_lookup(const Map<K, V>* map, K key, V* out_value)
+template <typename K, typename V, typename A>
+bool map_lookup(const Map<K, V, A>* map, K key, V* out_value)
 {
   Hash h = hash(key);
   size_t h1_val = h1(h);
@@ -823,8 +880,8 @@ bool map_lookup(const Map<K, V>* map, K key, V* out_value)
   return false;
 }
 
-template <typename K, typename V>
-inline bool find_or_find_insert(const Map<K, V>* map, K key, size_t h1, uint8_t h2,
+template <typename K, typename V, typename A>
+inline bool find_or_find_insert(const Map<K, V, A>* map, K key, size_t h1, uint8_t h2,
                                 size_t* insert_index)
 {
   bool has_insert_index = false;
@@ -873,8 +930,8 @@ inline bool find_or_find_insert(const Map<K, V>* map, K key, size_t h1, uint8_t 
   }
 }
 
-template <typename K, typename V>
-bool map_insert(Map<K, V>* map, IAllocator allocator, K key, V value)
+template <typename K, typename V, typename A>
+bool map_insert(Map<K, V, A>* map, K key, V value)
 {
   Hash h = hash(key);
   size_t h1_val = h1(h);
@@ -890,7 +947,7 @@ bool map_insert(Map<K, V>* map, IAllocator allocator, K key, V value)
 
   if (map->growth_left == 0 && is_empty(map->ctrl[insert_index]))
   {
-    if (!map_reserve(map, allocator, 1))
+    if (!map_reserve(map, 1))
     {
       return false;
     }
@@ -903,8 +960,8 @@ bool map_insert(Map<K, V>* map, IAllocator allocator, K key, V value)
   return true;
 }
 
-template <typename K, typename V>
-bool map_remove(Map<K, V>* map, K key)
+template <typename K, typename V, typename A>
+bool map_remove(Map<K, V, A>* map, K key)
 {
   Hash h = hash(key);
   size_t index;
@@ -963,21 +1020,21 @@ bool map_remove(Map<K, V>* map, K key)
  * invariant.
  */
 
-template <typename K, typename V>
+template <typename K, typename V, typename A>
 struct Map_Iter
 {
   Full_Iter full_iter;
-  Map<K, V>* map;
+  Map<K, V, A>* map;
 };
 
-template <typename K, typename V>
-Map_Iter<K, V> map_iter_new(Map<K, V>* map)
+template <typename K, typename V, typename A>
+Map_Iter<K, V, A> map_iter_new(Map<K, V, A>* map)
 {
-  return Map_Iter<K, V>{full_iter_new(map->ctrl, map->count), map};
+  return Map_Iter<K, V, A>{full_iter_new(map->ctrl, map->count), map};
 }
 
-template <typename K, typename V>
-bool map_iter_next(Map_Iter<K, V>* iter, K const** out_key, V** out_value)
+template <typename K, typename V, typename A>
+bool map_iter_next(Map_Iter<K, V, A>* iter, K const** out_key, V** out_value)
 {
   size_t offset;
 
@@ -1007,45 +1064,45 @@ static_assert(sizeof(Unit) == 1, "Unit must be exactly one byte");
  * exposing only membership operations.
  */
 
-template <typename K>
+template <typename K, typename A>
 struct Set
 {
-  Map<K, Unit> map;
+  Map<K, Unit, A> map;
 };
 
-template <typename K>
-Set<K> set_new()
+template <typename K, typename A>
+Set<K, A> set_new(A* allocator)
 {
-  return Set<K>{map_new<K, Unit>()};
+  return Set<K, A>{map_new<K, Unit, A>(allocator)};
 }
 
-template <typename K>
-bool set_new_with(Set<K>* set, IAllocator allocator, size_t init_capacity)
+template <typename K, typename A>
+bool set_new_with(Set<K, A>* set, A* allocator, size_t init_capacity)
 {
   return map_new_with(&set->map, allocator, init_capacity);
 }
 
-template <typename K>
-void set_drop(Set<K>* set, IAllocator allocator)
+template <typename K, typename A>
+void set_drop(Set<K, A>* set)
 {
-  map_drop(&set->map, allocator);
+  map_drop(&set->map);
 }
 
-template <typename K>
-bool set_insert(Set<K>* set, IAllocator allocator, K key)
+template <typename K, typename A>
+bool set_insert(Set<K, A>* set, K key)
 {
-  return map_insert(&set->map, allocator, key, Unit{});
+  return map_insert(&set->map, key, Unit{});
 }
 
-template <typename K>
-bool set_lookup(const Set<K>* set, K key)
+template <typename K, typename A>
+bool set_lookup(const Set<K, A>* set, K key)
 {
   Unit unit;
   return map_lookup(&set->map, key, &unit);
 }
 
-template <typename K>
-bool set_remove(Set<K>* set, K key)
+template <typename K, typename A>
+bool set_remove(Set<K, A>* set, K key)
 {
   return map_remove(&set->map, key);
 }
@@ -1059,20 +1116,20 @@ bool set_remove(Set<K>* set, K key)
  * const because changing a key in place would break the table's hash invariant.
  */
 
-template <typename K>
+template <typename K, typename A>
 struct Set_Iter
 {
-  Map_Iter<K, Unit> map_iter;
+  Map_Iter<K, Unit, A> map_iter;
 };
 
-template <typename K>
-Set_Iter<K> set_iter_new(Set<K>* set)
+template <typename K, typename A>
+Set_Iter<K, A> set_iter_new(Set<K, A>* set)
 {
-  return Set_Iter<K>{map_iter_new(&set->map)};
+  return Set_Iter<K, A>{map_iter_new(&set->map)};
 }
 
-template <typename K>
-bool set_iter_next(Set_Iter<K>* iter, K const** out_key)
+template <typename K, typename A>
+bool set_iter_next(Set_Iter<K, A>* iter, K const** out_key)
 {
   K const* key;
   Unit* value;
