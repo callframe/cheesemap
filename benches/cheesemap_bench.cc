@@ -4,8 +4,8 @@
 template <>
 struct cheesemap::Mapable<BenchKey>
 {
-  static cheesemap::Hash hash(BenchKey key) { return BenchHashKey(key); }
-  static bool compare(BenchKey lhs, BenchKey rhs) { return lhs == rhs; }
+  static cheesemap::Hash hash(BenchKey const& key) { return BenchHashKey(key); }
+  static bool compare(BenchKey const& lhs, BenchKey const& rhs) { return lhs == rhs; }
 };
 
 template <>
@@ -48,15 +48,9 @@ class CheesemapAdapter
     }
   }
 
-  bool insert(BenchKey key, BenchValue value)
-  {
-    return cheesemap::map_insert(&map_, key, value);
-  }
+  bool insert(BenchKey key, BenchValue value) { return cheesemap::map_insert(&map_, key, value); }
 
-  bool replace(BenchKey key, BenchValue value)
-  {
-    return cheesemap::map_insert(&map_, key, value);
-  }
+  bool replace(BenchKey key, BenchValue value) { return cheesemap::map_insert(&map_, key, value); }
 
   bool lookup(BenchKey key, BenchValue& value) const
   {

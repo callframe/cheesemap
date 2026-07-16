@@ -97,26 +97,27 @@ struct Mapable
 template <typename K>
 struct Mapable_Check
 {
-  using Hash_Fn = Hash (*)(K);
+  using Hash_Fn = Hash (*)(K const&);
   using In_Hash_Fn = decltype(&Mapable<K>::hash);
   static_assert(std::is_same<Hash_Fn, In_Hash_Fn>::value,
-                "cheesemap::Mapable<K>::hash must be `static Hash hash(K)`.");
+                "cheesemap::Mapable<K>::hash must be `static Hash hash(K const&)`.");
 
-  using Compare_Fn = bool (*)(K, K);
+  using Compare_Fn = bool (*)(K const&, K const&);
   using In_Compare_Fn = decltype(&Mapable<K>::compare);
-  static_assert(std::is_same<Compare_Fn, In_Compare_Fn>::value,
-                "cheesemap::Mapable<K>::compare must be `static bool compare(K, K)`.");
+  static_assert(
+      std::is_same<Compare_Fn, In_Compare_Fn>::value,
+      "cheesemap::Mapable<K>::compare must be `static bool compare(K const&, K const&)`.");
 };
 
 template <typename K>
-Hash hash(K k)
+Hash hash(K const& k)
 {
   (void)Mapable_Check<K>{};
   return Mapable<K>::hash(k);
 }
 
 template <typename K>
-bool compare(K a, K b)
+bool compare(K const& a, K const& b)
 {
   (void)Mapable_Check<K>{};
   return Mapable<K>::compare(a, b);
