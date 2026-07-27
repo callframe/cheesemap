@@ -578,12 +578,6 @@ template <typename K, typename V>
 constexpr std::size_t Entry_Align = alignof(Entry<K, V>);
 
 template <typename K, typename V>
-inline Entry<K, V> entry_new(K key, V value)
-{
-  return Entry<K, V>{key, value};
-}
-
-template <typename K, typename V>
 inline std::size_t layout_for(std::size_t num_buckets, std::size_t& out_ctrl_offset)
 {
   assert(is_pow2(num_buckets) == true);
@@ -959,7 +953,7 @@ bool map_insert(Map<K, V, A>* map, K key, V value)
     insert_index = impl::find_insert_index(map, h1_val);
   }
 
-  auto entry = impl::entry_new(key, value);
+  impl::Entry entry{key, value};
   impl::insert_at(map, insert_index, h2_val, &entry);
   return true;
 }

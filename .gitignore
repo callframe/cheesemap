@@ -8,3 +8,5 @@ out*/
 .cache/
 __pycache__/
 bazel-*
+
+compile_commands.json
