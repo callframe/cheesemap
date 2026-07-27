@@ -137,15 +137,15 @@ The basic operations are:
 Conventions
 -----------
 
-All declarations live in a single `cheesemap` namespace, so identifiers carry no
-redundant prefix.
+The API lives in the `cheesemap` namespace. Internal machinery lives in
+`cheesemap::impl`; using Cheesemap never requires naming it.
 
   - Types use `Ada_Case` (`Map`, `Probe_Sequence`, `Full_Iter`). The key and
     allocator traits are `Mapable` and `Allocatable`.
   - Functions and function-like macros use `lower_case`. The two containers share
     the namespace, so their public operations keep a `map_`/`set_` qualifier
-    (`map_insert`, `set_lookup`); internal helpers are unqualified (`group_load`,
-    `find_insert_index`).
+    (`map_insert`, `set_lookup`); helpers inside `impl` are unqualified
+    (`group_load`, `find_insert_index`).
   - Enum constants use `Ada_Case` with no prefix (`Ctrl_Empty`, `Load_Num`).
   - Object-like macros use `SCREAMING_CASE` with a `CM_` prefix and are defined
     outside the namespace, since macros do not obey namespaces.

@@ -41,7 +41,7 @@
 #define CM_BITMASK_STRIDE CHAR_BIT
 #endif
 
-#define CM_ENTRY_USE Entry<K, V>
+#define CM_ENTRY_USE ::cheesemap::impl::Entry<K, V>
 
 namespace cheesemap
 {
@@ -55,6 +55,16 @@ using Hash = uint64_t;
 
 /**
  *
+ * Everything in `impl` is internal machinery and may change at any time. The
+ * API is the traits, the containers and their iterators, and the `map_` and
+ * `set_` operations, which live directly in `cheesemap`.
+ */
+
+namespace impl
+{
+
+/**
+ *
  * Always_False is false for every type, but only once instantiated. A primary
  * trait template can static_assert on it to fail with a readable message when
  * used, while still being a well-formed template until then. Unlike
@@ -64,6 +74,8 @@ using Hash = uint64_t;
 template <typename>
 struct Always_False : std::false_type
 {};
+
+}  // namespace impl
 
 /**
  *
@@ -81,10 +93,34 @@ struct Always_False : std::false_type
 template <typename K>
 struct Mapable
 {
-  static_assert(Always_False<K>::value,
+  static_assert(impl::Always_False<K>::value,
                 "cheesemap::Mapable<K> is not specialized for this key type. Provide a "
                 "specialization with `static Hash hash(K)` and `static bool compare(K, K)`.");
 };
+
+/**
+ *
+ * Allocatable is the allocator trait. The allocator's state type A may be used
+ * only if the caller specializes Allocatable<A> with two static members:
+ *
+ *   static uint8_t* alloc(A* state, size_t size, size_t align);
+ *   static void dealloc(A* state, uint8_t* ptr, size_t size, size_t align);
+ *
+ * State is passed by pointer. As with Mapable, an unspecialized state type is a
+ * hard compile error.
+ */
+
+template <typename A>
+struct Allocatable
+{
+  static_assert(impl::Always_False<A>::value,
+                "cheesemap::Allocatable<A> is not specialized for this allocator state type. "
+                "Provide a specialization with `static uint8_t* alloc(A*, size_t, size_t)` and "
+                "`static void dealloc(A*, uint8_t*, size_t, size_t)`.");
+};
+
+namespace impl
+{
 
 /**
  *
@@ -122,27 +158,6 @@ bool compare(K const& a, K const& b)
   (void)Mapable_Check<K>{};
   return Mapable<K>::compare(a, b);
 }
-
-/**
- *
- * Allocatable is the allocator trait. The allocator's state type A may be used
- * only if the caller specializes Allocatable<A> with two static members:
- *
- *   static uint8_t* alloc(A* state, size_t size, size_t align);
- *   static void dealloc(A* state, uint8_t* ptr, size_t size, size_t align);
- *
- * State is passed by pointer. As with Mapable, an unspecialized state type is a
- * hard compile error.
- */
-
-template <typename A>
-struct Allocatable
-{
-  static_assert(Always_False<A>::value,
-                "cheesemap::Allocatable<A> is not specialized for this allocator state type. "
-                "Provide a specialization with `static uint8_t* alloc(A*, size_t, size_t)` and "
-                "`static void dealloc(A*, uint8_t*, size_t, size_t)`.");
-};
 
 /**
  *
@@ -588,31 +603,6 @@ inline Entry<K, V> entry_new(K key, V value)
   return Entry<K, V>{key, value};
 }
 
-/**
- *
- * Map is a Swiss-table-style hash map.
- *
- * The map stores keys and values in a contiguous entry array and keeps probing
- * metadata in a separate control-byte array. `growth_left` tracks how many
- * more empty buckets may be filled before the table must grow.
- */
-
-template <typename K, typename V, typename A>
-struct Map
-{
-  size_t growth_left;
-  size_t count;
-  size_t bucket_mask;
-  uint8_t* ctrl;
-  A* allocator;
-};
-
-template <typename K, typename V, typename A>
-Map<K, V, A> map_new(A* allocator)
-{
-  return Map<K, V, A>{0, 0, 0, (uint8_t*)Init_Ctrl, allocator};
-}
-
 template <typename K, typename V>
 inline size_t layout_for(size_t num_buckets, size_t& out_ctrl_offset)
 {
@@ -643,27 +633,54 @@ inline size_t layout_for(size_t num_buckets, size_t& out_ctrl_offset)
   return total_size;
 }
 
+}  // namespace impl
+
+/**
+ *
+ * Map is a Swiss-table-style hash map.
+ *
+ * The map stores keys and values in a contiguous entry array and keeps probing
+ * metadata in a separate control-byte array. `growth_left` tracks how many
+ * more empty buckets may be filled before the table must grow.
+ */
+
+template <typename K, typename V, typename A>
+struct Map
+{
+  size_t growth_left;
+  size_t count;
+  size_t bucket_mask;
+  uint8_t* ctrl;
+  A* allocator;
+};
+
+template <typename K, typename V, typename A>
+Map<K, V, A> map_new(A* allocator)
+{
+  return Map<K, V, A>{0, 0, 0, (uint8_t*)impl::Init_Ctrl, allocator};
+}
+
 template <typename K, typename V, typename A>
 bool map_new_with(Map<K, V, A>* map, A* allocator, size_t init_capacity)
 {
-  size_t num_buckets = capacity_to_bucket(init_capacity);
+  size_t num_buckets = impl::capacity_to_bucket(init_capacity);
 
   size_t ctrl_offset;
-  size_t total_size = layout_for<K, V>(num_buckets, ctrl_offset);
+  size_t total_size = impl::layout_for<K, V>(num_buckets, ctrl_offset);
 
   assert(total_size % alignof(CM_ENTRY_USE) == 0);
 
-  uint8_t* entries = alloc(allocator, total_size, alignof(CM_ENTRY_USE));
+  uint8_t* entries = impl::alloc(allocator, total_size, alignof(CM_ENTRY_USE));
   if (entries == NULL)
   {
     return false;
   }
-  assert(is_aligned((size_t)entries, alignof(CM_ENTRY_USE)) == true);
+  assert(impl::is_aligned((size_t)entries, alignof(CM_ENTRY_USE)) == true);
 
   uint8_t* ctrl = entries + ctrl_offset;
-  memset(ctrl, Ctrl_Empty, num_buckets + CM_GROUP_SIZE);
+  memset(ctrl, impl::Ctrl_Empty, num_buckets + CM_GROUP_SIZE);
 
-  size_t growth_left = bucket_mask_to_capacity(num_buckets - 1);
+  size_t growth_left = impl::bucket_mask_to_capacity(num_buckets - 1);
   *map = Map<K, V, A>{growth_left, 0, num_buckets - 1, ctrl, allocator};
   return true;
 }
@@ -672,15 +689,18 @@ template <typename K, typename V, typename A>
 void map_drop(Map<K, V, A>* map)
 {
   A* allocator = map->allocator;
-  if (map->ctrl == Init_Ctrl) return;
+  if (map->ctrl == impl::Init_Ctrl) return;
 
   size_t ctrl_offset;
-  size_t total_size = layout_for<K, V>(map->bucket_mask + 1, ctrl_offset);
+  size_t total_size = impl::layout_for<K, V>(map->bucket_mask + 1, ctrl_offset);
 
   uint8_t* entries = map->ctrl - ctrl_offset;
-  dealloc(allocator, entries, total_size, alignof(CM_ENTRY_USE));
+  impl::dealloc(allocator, entries, total_size, alignof(CM_ENTRY_USE));
   *map = map_new<K, V, A>(allocator);
 }
+
+namespace impl
+{
 
 template <typename K, typename V, typename A>
 inline bool find_insert_index_in_group(const Map<K, V, A>* map, Group group,
@@ -789,43 +809,6 @@ bool resize(Map<K, V, A>* map, size_t new_capacity)
 }
 
 template <typename K, typename V, typename A>
-void map_shrink_to_fit(Map<K, V, A>* map)
-{
-  // Shrink to fit recalculates capacity based on current item count.
-  // The minimum capacity is 1 because map_new_with always allocates
-  // at least CM_GROUP_SIZE buckets, ensuring we never have zero capacity.
-  // Infact it doesn't matter whether we take the max with 1 or CM_GROUP_SIZE.
-  size_t new_capacity = CM_MAX(map->count, 1);
-  if (new_capacity >= bucket_mask_to_capacity(map->bucket_mask))
-  {
-    return;
-  }
-
-  // Shrinking is best-effort: a failed reallocation leaves the existing table
-  // untouched, so we keep the current map and report nothing.
-  (void)resize(map, new_capacity);
-}
-
-template <typename K, typename V, typename A>
-bool map_reserve(Map<K, V, A>* map, size_t additional)
-{
-  // growth_left is the remaining insertion budget before the table must
-  // grow. DELETED tombstones spend this budget without raising count, so
-  // the resize decision must use growth_left, not count.
-  if (additional <= map->growth_left)
-  {
-    return true;
-  }
-
-  // TODO: check overflow
-  size_t min_capacity = map->count + additional;
-  size_t total_capacity = bucket_mask_to_capacity(map->bucket_mask);
-  // TODO: check for rehash if we have plenty of space left
-
-  return resize(map, CM_MAX(min_capacity, total_capacity + 1));
-}
-
-template <typename K, typename V, typename A>
 inline bool find(const Map<K, V, A>* map, K key, size_t h1, uint8_t h2, size_t* out_index)
 {
   size_t bucket_mask = map->bucket_mask;
@@ -861,24 +844,6 @@ inline bool find(const Map<K, V, A>* map, K key, size_t h1, uint8_t h2, size_t* 
 
     probe_sequence_next(&seq, bucket_mask);
   }
-}
-
-template <typename K, typename V, typename A>
-bool map_lookup(const Map<K, V, A>* map, K key, V* out_value)
-{
-  Hash h = hash(key);
-  size_t h1_val = h1(h);
-  uint8_t h2_val = h2(h);
-
-  size_t index;
-  if (find(map, key, h1_val, h2_val, &index))
-  {
-    auto entry = entry_at(map, index);
-    *out_value = entry->value;
-    return true;
-  }
-
-  return false;
 }
 
 template <typename K, typename V, typename A>
@@ -931,42 +896,99 @@ inline bool find_or_find_insert(const Map<K, V, A>* map, K key, size_t h1, uint8
   }
 }
 
+}  // namespace impl
+
+template <typename K, typename V, typename A>
+void map_shrink_to_fit(Map<K, V, A>* map)
+{
+  // Shrink to fit recalculates capacity based on current item count.
+  // The minimum capacity is 1 because map_new_with always allocates
+  // at least CM_GROUP_SIZE buckets, ensuring we never have zero capacity.
+  // Infact it doesn't matter whether we take the max with 1 or CM_GROUP_SIZE.
+  size_t new_capacity = CM_MAX(map->count, 1);
+  if (new_capacity >= impl::bucket_mask_to_capacity(map->bucket_mask))
+  {
+    return;
+  }
+
+  // Shrinking is best-effort: a failed reallocation leaves the existing table
+  // untouched, so we keep the current map and report nothing.
+  (void)impl::resize(map, new_capacity);
+}
+
+template <typename K, typename V, typename A>
+bool map_reserve(Map<K, V, A>* map, size_t additional)
+{
+  // growth_left is the remaining insertion budget before the table must
+  // grow. DELETED tombstones spend this budget without raising count, so
+  // the resize decision must use growth_left, not count.
+  if (additional <= map->growth_left)
+  {
+    return true;
+  }
+
+  // TODO: check overflow
+  size_t min_capacity = map->count + additional;
+  size_t total_capacity = impl::bucket_mask_to_capacity(map->bucket_mask);
+  // TODO: check for rehash if we have plenty of space left
+
+  return impl::resize(map, CM_MAX(min_capacity, total_capacity + 1));
+}
+
+template <typename K, typename V, typename A>
+bool map_lookup(const Map<K, V, A>* map, K key, V* out_value)
+{
+  Hash h = impl::hash(key);
+  size_t h1_val = impl::h1(h);
+  uint8_t h2_val = impl::h2(h);
+
+  size_t index;
+  if (impl::find(map, key, h1_val, h2_val, &index))
+  {
+    auto entry = impl::entry_at(map, index);
+    *out_value = entry->value;
+    return true;
+  }
+
+  return false;
+}
+
 template <typename K, typename V, typename A>
 bool map_insert(Map<K, V, A>* map, K key, V value)
 {
-  Hash h = hash(key);
-  size_t h1_val = h1(h);
-  uint8_t h2_val = h2(h);
+  Hash h = impl::hash(key);
+  size_t h1_val = impl::h1(h);
+  uint8_t h2_val = impl::h2(h);
 
   size_t insert_index;
-  if (find_or_find_insert(map, key, h1_val, h2_val, &insert_index))
+  if (impl::find_or_find_insert(map, key, h1_val, h2_val, &insert_index))
   {
-    auto entry = entry_at(map, insert_index);
+    auto entry = impl::entry_at(map, insert_index);
     entry->value = value;
     return true;
   }
 
-  if (map->growth_left == 0 && is_empty(map->ctrl[insert_index]))
+  if (map->growth_left == 0 && impl::is_empty(map->ctrl[insert_index]))
   {
     if (!map_reserve(map, 1))
     {
       return false;
     }
 
-    insert_index = find_insert_index(map, h1_val);
+    insert_index = impl::find_insert_index(map, h1_val);
   }
 
-  CM_ENTRY_USE entry = entry_new(key, value);
-  insert_at(map, insert_index, h2_val, &entry);
+  CM_ENTRY_USE entry = impl::entry_new(key, value);
+  impl::insert_at(map, insert_index, h2_val, &entry);
   return true;
 }
 
 template <typename K, typename V, typename A>
 bool map_remove(Map<K, V, A>* map, K key)
 {
-  Hash h = hash(key);
+  Hash h = impl::hash(key);
   size_t index;
-  if (!find(map, key, h1(h), h2(h), &index))
+  if (!impl::find(map, key, impl::h1(h), impl::h2(h), &index))
   {
     return false;
   }
@@ -990,20 +1012,21 @@ bool map_remove(Map<K, V, A>* map, K key)
   // naturally anyway, so we can safely convert this slot back to EMPTY and
   // restore one growth slot.
 
-  Group group_before = group_load(ctrl_at(map, index_before));
-  Group group_after = group_load(ctrl_at(map, index));
-  Bitmask empty_before = group_match_empty(group_before);
-  Bitmask empty_after = group_match_empty(group_after);
+  impl::Group group_before = impl::group_load(impl::ctrl_at(map, index_before));
+  impl::Group group_after = impl::group_load(impl::ctrl_at(map, index));
+  impl::Bitmask empty_before = impl::group_match_empty(group_before);
+  impl::Bitmask empty_after = impl::group_match_empty(group_after);
 
-  size_t num_zeros = bitmask_leading_zeros(empty_before) + bitmask_trailing_zeros(empty_after);
+  size_t num_zeros =
+      impl::bitmask_leading_zeros(empty_before) + impl::bitmask_trailing_zeros(empty_after);
 
   if (num_zeros >= CM_GROUP_SIZE)
   {
-    ctrl_set(map, index, Ctrl_Deleted);
+    impl::ctrl_set(map, index, impl::Ctrl_Deleted);
   }
   else
   {
-    ctrl_set(map, index, Ctrl_Empty);
+    impl::ctrl_set(map, index, impl::Ctrl_Empty);
     map->growth_left += 1;
   }
 
@@ -1024,14 +1047,14 @@ bool map_remove(Map<K, V, A>* map, K key)
 template <typename K, typename V, typename A>
 struct Map_Iter
 {
-  Full_Iter full_iter;
+  impl::Full_Iter full_iter;
   Map<K, V, A>* map;
 };
 
 template <typename K, typename V, typename A>
 Map_Iter<K, V, A> map_iter_new(Map<K, V, A>* map)
 {
-  return Map_Iter<K, V, A>{full_iter_new(map->ctrl, map->count), map};
+  return Map_Iter<K, V, A>{impl::full_iter_new(map->ctrl, map->count), map};
 }
 
 template <typename K, typename V, typename A>
@@ -1039,12 +1062,12 @@ bool map_iter_next(Map_Iter<K, V, A>* iter, K const** out_key, V** out_value)
 {
   size_t offset;
 
-  if (!full_iter_next(&iter->full_iter, &offset))
+  if (!impl::full_iter_next(&iter->full_iter, &offset))
   {
     return false;
   }
 
-  auto entry = entry_at(iter->map, offset);
+  auto entry = impl::entry_at(iter->map, offset);
   *out_key = &entry->key;
   *out_value = &entry->value;
 
