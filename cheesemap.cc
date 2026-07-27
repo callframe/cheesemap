@@ -1,26 +1,26 @@
 #pragma once
 
-#include <assert.h>
-#include <limits.h>
-#include <stddef.h>
-#include <stdint.h>
-#include <string.h>
-
+#include <cassert>
+#include <climits>
+#include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <type_traits>
 
-#if !defined(__cplusplus)
+#if defined(_MSVC_LANG)
+#define CM_LANG _MSVC_LANG
+#include <intrin.h>
+
+#elif defined(__cplusplus)
+#define CM_LANG __cplusplus
+
+#else
 #error "Cheesemap requires C++"
 #endif
 
-#if __cplusplus < 201703L
+#if CM_LANG < 201703L
 #error "Cheesemap requires C++17 or later"
 #endif
-
-#if defined(_MSC_VER)
-#error "MSVC is not yet supported. Open an Issue if you need this."
-#endif
-
-#define CM_MAX(a, b) ((a) > (b) ? (a) : (b))
 
 #define CM_REPEAT_1(x) x
 #define CM_REPEAT_2(x) CM_REPEAT_1(x), CM_REPEAT_1(x)
@@ -41,8 +41,6 @@
 #define CM_BITMASK_STRIDE CHAR_BIT
 #endif
 
-#define CM_ENTRY_USE ::cheesemap::impl::Entry<K, V>
-
 namespace cheesemap
 {
 
@@ -51,7 +49,7 @@ namespace cheesemap
  * Hash and compare operations
  */
 
-using Hash = uint64_t;
+using Hash = std::uint64_t;
 
 /**
  *
@@ -103,8 +101,8 @@ struct Mapable
  * Allocatable is the allocator trait. The allocator's state type A may be used
  * only if the caller specializes Allocatable<A> with two static members:
  *
- *   static uint8_t* alloc(A* state, size_t size, size_t align);
- *   static void dealloc(A* state, uint8_t* ptr, size_t size, size_t align);
+ *   static std::uint8_t* alloc(A* state, std::size_t size, std::size_t align);
+ *   static void dealloc(A* state, std::uint8_t* ptr, std::size_t size, std::size_t align);
  *
  * State is passed by pointer. As with Mapable, an unspecialized state type is a
  * hard compile error.
@@ -115,8 +113,9 @@ struct Allocatable
 {
   static_assert(impl::Always_False<A>::value,
                 "cheesemap::Allocatable<A> is not specialized for this allocator state type. "
-                "Provide a specialization with `static uint8_t* alloc(A*, size_t, size_t)` and "
-                "`static void dealloc(A*, uint8_t*, size_t, size_t)`.");
+                "Provide a specialization with `static std::uint8_t* alloc(A*, std::size_t, "
+                "std::size_t)` and "
+                "`static void dealloc(A*, std::uint8_t*, std::size_t, std::size_t)`.");
 };
 
 namespace impl
@@ -170,28 +169,30 @@ bool compare(K const& a, K const& b)
 template <typename A>
 struct Allocatable_Check
 {
-  using Alloc_Fn = uint8_t* (*)(A*, size_t, size_t);
+  using Alloc_Fn = std::uint8_t* (*)(A*, std::size_t, std::size_t);
   using In_Alloc_Fn = decltype(&Allocatable<A>::alloc);
-  static_assert(std::is_same<Alloc_Fn, In_Alloc_Fn>::value,
-                "cheesemap::Allocatable<A>::alloc must be `static uint8_t* alloc(A*, size_t, "
-                "size_t)`.");
+  static_assert(
+      std::is_same<Alloc_Fn, In_Alloc_Fn>::value,
+      "cheesemap::Allocatable<A>::alloc must be `static std::uint8_t* alloc(A*, std::size_t, "
+      "std::size_t)`.");
 
-  using Dealloc_Fn = void (*)(A*, uint8_t*, size_t, size_t);
+  using Dealloc_Fn = void (*)(A*, std::uint8_t*, std::size_t, std::size_t);
   using In_Dealloc_Fn = decltype(&Allocatable<A>::dealloc);
-  static_assert(std::is_same<Dealloc_Fn, In_Dealloc_Fn>::value,
-                "cheesemap::Allocatable<A>::dealloc must be `static void dealloc(A*, uint8_t*, "
-                "size_t, size_t)`.");
+  static_assert(
+      std::is_same<Dealloc_Fn, In_Dealloc_Fn>::value,
+      "cheesemap::Allocatable<A>::dealloc must be `static void dealloc(A*, std::uint8_t*, "
+      "std::size_t, std::size_t)`.");
 };
 
 template <typename A>
-uint8_t* alloc(A* state, size_t size, size_t align)
+std::uint8_t* alloc(A* state, std::size_t size, std::size_t align)
 {
   (void)Allocatable_Check<A>{};
   return Allocatable<A>::alloc(state, size, align);
 }
 
 template <typename A>
-void dealloc(A* state, uint8_t* ptr, size_t size, size_t align)
+void dealloc(A* state, std::uint8_t* ptr, std::size_t size, std::size_t align)
 {
   (void)Allocatable_Check<A>{};
   Allocatable<A>::dealloc(state, ptr, size, align);
@@ -209,7 +210,7 @@ void dealloc(A* state, uint8_t* ptr, size_t size, size_t align)
  * the real buckets, so group loads can wrap around the end of the table.
  */
 
-enum : uint8_t
+enum : std::uint8_t
 {
   // cheesemap config
   Load_Denom = 8,
@@ -229,16 +230,16 @@ enum : uint8_t
   //
   // aux
   // Size of a word in bits
-  Word_Width = sizeof(size_t) * CHAR_BIT,
+  Word_Width = sizeof(std::size_t) * CHAR_BIT,
 };
 
 #if defined(__SSE2__)
 using Group = __m128i;
-using Bitmask = uint16_t;
+using Bitmask = std::uint16_t;
 #endif
 
 #if !defined(CM_NO_FALLBACK)
-using Group = size_t;
+using Group = std::size_t;
 using Bitmask = Group;
 #endif
 
@@ -248,8 +249,8 @@ using Bitmask = Group;
  */
 
 // TODO: check whether passing my pointer is faster
-inline Group group_load(const uint8_t* ctrl);
-inline Bitmask group_match_tag(Group group, uint8_t tag);
+inline Group group_load(const std::uint8_t* ctrl);
+inline Bitmask group_match_tag(Group group, std::uint8_t tag);
 inline Bitmask group_match_empty_or_deleted(Group group);
 inline Bitmask group_match_empty(Group group);
 inline Bitmask group_match_full(Group group);
@@ -260,9 +261,9 @@ inline Bitmask group_match_full(Group group);
  */
 
 #if defined(__SSE2__)
-inline Group group_load(const uint8_t* ctrl) { return _mm_loadu_si128((const Group*)ctrl); }
+inline Group group_load(const std::uint8_t* ctrl) { return _mm_loadu_si128((const Group*)ctrl); }
 
-inline Bitmask group_match_tag(Group group, uint8_t tag)
+inline Bitmask group_match_tag(Group group, std::uint8_t tag)
 {
   const __m128i tagvec = _mm_set1_epi8(tag);
   __m128i cmp = _mm_cmpeq_epi8(group, tagvec);
@@ -294,14 +295,14 @@ inline Bitmask group_match_full(Group group)
  */
 
 #if !defined(CM_NO_FALLBACK)
-inline Group group_repeat(uint8_t v) { return (Group)v * (((Group)-1) / (uint8_t)~0); }
+inline Group group_repeat(std::uint8_t v) { return (Group)v * (((Group)-1) / (std::uint8_t)~0); }
 
-inline Group group_load(const uint8_t* ctrl)
+inline Group group_load(const std::uint8_t* ctrl)
 {
-  assert(ctrl != NULL);
+  assert(ctrl != nullptr);
 
   Group v;
-  memcpy(&v, ctrl, sizeof(v));
+  std::memcpy(&v, ctrl, sizeof(v));
   return v;
 }
 
@@ -320,7 +321,7 @@ inline Bitmask group_match_full(Group group)
   return group_match_empty_or_deleted(group) ^ group_repeat(Ctrl_Deleted);
 }
 
-inline Bitmask group_match_tag(Group group, uint8_t tag)
+inline Bitmask group_match_tag(Group group, std::uint8_t tag)
 {
   Group cmp = group ^ group_repeat(tag);
   return (cmp - group_repeat(Ctrl_End)) & ~cmp & group_repeat(Ctrl_Deleted);
@@ -338,7 +339,7 @@ inline Bitmask group_match_tag(Group group, uint8_t tag)
  * map has no growth left, and resize before writing.
  */
 
-inline constexpr uint8_t Init_Ctrl[CM_GROUP_SIZE] = {
+inline constexpr std::uint8_t Init_Ctrl[CM_GROUP_SIZE] = {
 #if CM_GROUP_SIZE == 16
     CM_REPEAT_16(Ctrl_Empty)
 #elif CM_GROUP_SIZE == 8
@@ -356,7 +357,7 @@ inline constexpr uint8_t Init_Ctrl[CM_GROUP_SIZE] = {
  * Returns CM_GROUP_SIZE when the mask is zero.
  */
 
-inline uint32_t bitmask_trailing_zeros(Bitmask mask)
+inline std::uint32_t bitmask_trailing_zeros(Bitmask mask)
 {
   if (mask == 0)
   {
@@ -378,7 +379,7 @@ inline uint32_t bitmask_trailing_zeros(Bitmask mask)
  * Returns Word_Width when x is zero.
  */
 
-inline uint32_t leading_zeros(size_t x)
+inline std::uint32_t leading_zeros(std::size_t x)
 {
   if (x == 0)
   {
@@ -394,7 +395,7 @@ inline uint32_t leading_zeros(size_t x)
 #endif
 }
 
-inline uint32_t bitmask_leading_zeros(Bitmask mask)
+inline std::uint32_t bitmask_leading_zeros(Bitmask mask)
 {
   // Must return slot units, like bitmask_trailing_zeros.
 #if CM_BITMASK_STRIDE == 1
@@ -406,16 +407,22 @@ inline uint32_t bitmask_leading_zeros(Bitmask mask)
 #endif
 }
 
-[[maybe_unused]] inline bool is_pow2(size_t x) { return x != 0 && (x & (x - 1)) == 0; }
+[[maybe_unused]] inline bool is_pow2(std::size_t x) { return x != 0 && (x & (x - 1)) == 0; }
 
-inline size_t next_pow2(size_t x)
+template <typename T>
+constexpr T max(T x, T y)
+{
+  return x > y ? x : y;
+}
+
+inline std::size_t next_pow2(std::size_t x)
 {
   if (x <= 1) return 1;
 
-  return ((size_t)1 << (Word_Width - leading_zeros(x - 1)));
+  return ((std::size_t)1 << (Word_Width - leading_zeros(x - 1)));
 }
 
-inline size_t bucket_mask_to_capacity(size_t bucket_mask)
+inline std::size_t bucket_mask_to_capacity(std::size_t bucket_mask)
 {
   // Capacity is the maximum number of full buckets allowed before growth.
   // Cheesemap keeps at least 1/8 of the buckets empty, so capacity is 7/8
@@ -423,55 +430,55 @@ inline size_t bucket_mask_to_capacity(size_t bucket_mask)
   return ((bucket_mask + 1) / Load_Denom) * Load_Num;
 }
 
-inline size_t alignup(size_t x, size_t align)
+inline std::size_t alignup(std::size_t x, std::size_t align)
 {
   assert(is_pow2(align) == true);
   return (x + align - 1) & ~(align - 1);
 }
 
-[[maybe_unused]] inline bool is_aligned(size_t x, size_t align)
+[[maybe_unused]] inline bool is_aligned(std::size_t x, std::size_t align)
 {
   assert(is_pow2(align) == true);
   return (x & (align - 1)) == 0;
 }
 
-inline size_t capacity_to_bucket(size_t capacity)
+inline std::size_t capacity_to_bucket(std::size_t capacity)
 {
   // Choose enough buckets to hold `capacity` items at a 7/8 max load factor.
-  size_t adjusted_capacity = capacity * Load_Denom / Load_Num;
-  return CM_MAX(next_pow2(adjusted_capacity), CM_GROUP_SIZE);
+  std::size_t adjusted_capacity = capacity * Load_Denom / Load_Num;
+  return max<std::size_t>(next_pow2(adjusted_capacity), CM_GROUP_SIZE);
 }
 
-[[maybe_unused]] inline bool is_special(uint8_t tag)
+[[maybe_unused]] inline bool is_special(std::uint8_t tag)
 {
   // Returns true for special control bytes, which have their high bit set.
   // EMPTY and DELETED are special; FULL control bytes are not.
   return (tag & Ctrl_Deleted) != 0;
 }
 
-inline bool is_empty(uint8_t tag)
+inline bool is_empty(std::uint8_t tag)
 {
   assert(is_special(tag) == true);
   return (tag & Ctrl_End) != 0;
 }
 
-inline size_t h1(Hash hash)
+inline std::size_t h1(Hash hash)
 {
   // Convert the hash to the native word size used by the probing logic.
   // On narrower targets this truncates the upper bits of the hash.
-  return (size_t)hash;
+  return (std::size_t)hash;
 }
 
-inline uint8_t h2(Hash hash)
+inline std::uint8_t h2(Hash hash)
 {
   // On 64-bit platforms this leaves exactly 7 bits after the shift.
-  // On 32-bit platforms size_t is 32-bit while Hash is 64-bit, so
+  // On 32-bit platforms std::size_t is 32-bit while Hash is 64-bit, so
   // shifting by 25 leaves a 39-bit intermediate value instead.
-  uint64_t shifted = hash >> (sizeof(size_t) * CHAR_BIT - Fp_Size);
+  std::uint64_t shifted = hash >> (sizeof(std::size_t) * CHAR_BIT - Fp_Size);
 
   // Mask the intermediate value down to the 7 fingerprint bits stored in
   // the ctrl block.
-  return (uint8_t)(shifted & H2_Mask);
+  return (std::uint8_t)(shifted & H2_Mask);
 }
 
 /**
@@ -482,12 +489,12 @@ inline uint8_t h2(Hash hash)
 
 using Bitmask_Iter = Bitmask;
 
-inline bool bitmask_iter_next(Bitmask_Iter* iter, size_t* out_index)
+inline bool bitmask_iter_next(Bitmask_Iter* iter, std::size_t* out_index)
 {
   Bitmask_Iter it = *iter;
   if (it == 0) return false;
 
-  size_t bit = bitmask_trailing_zeros(it);
+  std::size_t bit = bitmask_trailing_zeros(it);
   it &= (it - 1);
 
   *iter = it;
@@ -505,30 +512,30 @@ inline bool bitmask_iter_next(Bitmask_Iter* iter, size_t* out_index)
 struct Full_Iter
 {
   Bitmask_Iter bitmask_iter;
-  size_t bucket_index;
-  size_t num_items;
-  uint8_t const* ctrl;
+  std::size_t bucket_index;
+  std::size_t num_items;
+  std::uint8_t const* ctrl;
 };
 
-inline Bitmask_Iter full_iter_load_mask(uint8_t const* ctrl)
+inline Bitmask_Iter full_iter_load_mask(std::uint8_t const* ctrl)
 {
   Group group = group_load(ctrl);
   return group_match_full(group);
 }
 
-inline Full_Iter full_iter_new(uint8_t const* ctrl, size_t num_items)
+inline Full_Iter full_iter_new(std::uint8_t const* ctrl, std::size_t num_items)
 {
   Bitmask_Iter iter = full_iter_load_mask(ctrl);
   return Full_Iter{iter, 0, num_items, ctrl};
 }
 
-inline size_t full_iter_next_inner(Full_Iter* iter)
+inline std::size_t full_iter_next_inner(Full_Iter* iter)
 {
   Full_Iter it = *iter;
 
   while (true)
   {
-    size_t group_offset;
+    std::size_t group_offset;
     if (bitmask_iter_next(&it.bitmask_iter, &group_offset))
     {
       *iter = it;
@@ -541,9 +548,9 @@ inline size_t full_iter_next_inner(Full_Iter* iter)
   }
 }
 
-inline bool full_iter_next(Full_Iter* iter, size_t* out_offset)
+inline bool full_iter_next(Full_Iter* iter, std::size_t* out_offset)
 {
-  size_t num_items = iter->num_items;
+  std::size_t num_items = iter->num_items;
   if (num_items == 0) return false;
 
   *out_offset = full_iter_next_inner(iter);
@@ -560,11 +567,11 @@ inline bool full_iter_next(Full_Iter* iter, size_t* out_offset)
 
 struct Probe_Sequence
 {
-  size_t pos;
-  size_t stride;
+  std::size_t pos;
+  std::size_t stride;
 };
 
-inline void probe_sequence_next(Probe_Sequence* seq, size_t bucket_mask)
+inline void probe_sequence_next(Probe_Sequence* seq, std::size_t bucket_mask)
 {
   Probe_Sequence s = *seq;
   assert(s.stride <= bucket_mask);
@@ -598,13 +605,19 @@ struct Entry
 };
 
 template <typename K, typename V>
+constexpr std::size_t Entry_Size = sizeof(Entry<K, V>);
+
+template <typename K, typename V>
+constexpr std::size_t Entry_Align = alignof(Entry<K, V>);
+
+template <typename K, typename V>
 inline Entry<K, V> entry_new(K key, V value)
 {
   return Entry<K, V>{key, value};
 }
 
 template <typename K, typename V>
-inline size_t layout_for(size_t num_buckets, size_t& out_ctrl_offset)
+inline std::size_t layout_for(std::size_t num_buckets, std::size_t& out_ctrl_offset)
 {
   assert(is_pow2(num_buckets) == true);
 
@@ -619,15 +632,15 @@ inline size_t layout_for(size_t num_buckets, size_t& out_ctrl_offset)
   // control bytes clone the first group so group loads can wrap without a
   // branch.
 
-  size_t ctrl_align = CM_MAX(CM_GROUP_SIZE, alignof(CM_ENTRY_USE));
+  std::size_t ctrl_align = max<std::size_t>(CM_GROUP_SIZE, Entry_Align<K, V>);
 
   // TODO: check for overflow
 
-  size_t base_offset = sizeof(CM_ENTRY_USE) * num_buckets;
-  size_t ctrl_offset = alignup(base_offset, ctrl_align);
+  std::size_t base_offset = Entry_Size<K, V> * num_buckets;
+  std::size_t ctrl_offset = alignup(base_offset, ctrl_align);
 
-  size_t total_size = ctrl_offset + num_buckets + CM_GROUP_SIZE;
-  total_size = alignup(total_size, alignof(CM_ENTRY_USE));
+  std::size_t total_size = ctrl_offset + num_buckets + CM_GROUP_SIZE;
+  total_size = alignup(total_size, Entry_Align<K, V>);
 
   out_ctrl_offset = ctrl_offset;
   return total_size;
@@ -647,40 +660,40 @@ inline size_t layout_for(size_t num_buckets, size_t& out_ctrl_offset)
 template <typename K, typename V, typename A>
 struct Map
 {
-  size_t growth_left;
-  size_t count;
-  size_t bucket_mask;
-  uint8_t* ctrl;
+  std::size_t growth_left;
+  std::size_t count;
+  std::size_t bucket_mask;
+  std::uint8_t* ctrl;
   A* allocator;
 };
 
 template <typename K, typename V, typename A>
 Map<K, V, A> map_new(A* allocator)
 {
-  return Map<K, V, A>{0, 0, 0, (uint8_t*)impl::Init_Ctrl, allocator};
+  return Map<K, V, A>{0, 0, 0, (std::uint8_t*)impl::Init_Ctrl, allocator};
 }
 
 template <typename K, typename V, typename A>
-bool map_new_with(Map<K, V, A>* map, A* allocator, size_t init_capacity)
+bool map_new_with(Map<K, V, A>* map, A* allocator, std::size_t init_capacity)
 {
-  size_t num_buckets = impl::capacity_to_bucket(init_capacity);
+  std::size_t num_buckets = impl::capacity_to_bucket(init_capacity);
 
-  size_t ctrl_offset;
-  size_t total_size = impl::layout_for<K, V>(num_buckets, ctrl_offset);
+  std::size_t ctrl_offset;
+  std::size_t total_size = impl::layout_for<K, V>(num_buckets, ctrl_offset);
 
-  assert(total_size % alignof(CM_ENTRY_USE) == 0);
+  assert(total_size % impl::Entry_Align<K, V> == 0);
 
-  uint8_t* entries = impl::alloc(allocator, total_size, alignof(CM_ENTRY_USE));
-  if (entries == NULL)
+  std::uint8_t* entries = impl::alloc(allocator, total_size, impl::Entry_Align<K, V>);
+  if (entries == nullptr)
   {
     return false;
   }
-  assert(impl::is_aligned((size_t)entries, alignof(CM_ENTRY_USE)) == true);
+  assert(impl::is_aligned((std::size_t)entries, impl::Entry_Align<K, V>) == true);
 
-  uint8_t* ctrl = entries + ctrl_offset;
-  memset(ctrl, impl::Ctrl_Empty, num_buckets + CM_GROUP_SIZE);
+  std::uint8_t* ctrl = entries + ctrl_offset;
+  std::memset(ctrl, impl::Ctrl_Empty, num_buckets + CM_GROUP_SIZE);
 
-  size_t growth_left = impl::bucket_mask_to_capacity(num_buckets - 1);
+  std::size_t growth_left = impl::bucket_mask_to_capacity(num_buckets - 1);
   *map = Map<K, V, A>{growth_left, 0, num_buckets - 1, ctrl, allocator};
   return true;
 }
@@ -691,11 +704,11 @@ void map_drop(Map<K, V, A>* map)
   A* allocator = map->allocator;
   if (map->ctrl == impl::Init_Ctrl) return;
 
-  size_t ctrl_offset;
-  size_t total_size = impl::layout_for<K, V>(map->bucket_mask + 1, ctrl_offset);
+  std::size_t ctrl_offset;
+  std::size_t total_size = impl::layout_for<K, V>(map->bucket_mask + 1, ctrl_offset);
 
-  uint8_t* entries = map->ctrl - ctrl_offset;
-  impl::dealloc(allocator, entries, total_size, alignof(CM_ENTRY_USE));
+  std::uint8_t* entries = map->ctrl - ctrl_offset;
+  impl::dealloc(allocator, entries, total_size, impl::Entry_Align<K, V>);
   *map = map_new<K, V, A>(allocator);
 }
 
@@ -704,27 +717,27 @@ namespace impl
 
 template <typename K, typename V, typename A>
 inline bool find_insert_index_in_group(const Map<K, V, A>* map, Group group,
-                                       const Probe_Sequence* seq, size_t* offset)
+                                       const Probe_Sequence* seq, std::size_t* offset)
 {
   Bitmask mask = group_match_empty_or_deleted(group);
   if (mask == 0) return false;
 
-  size_t lowest = bitmask_trailing_zeros(mask);
+  std::size_t lowest = bitmask_trailing_zeros(mask);
   *offset = (seq->pos + lowest) & map->bucket_mask;
   return true;
 }
 
 template <typename K, typename V, typename A>
-inline uint8_t* ctrl_at(const Map<K, V, A>* map, size_t index)
+inline std::uint8_t* ctrl_at(const Map<K, V, A>* map, std::size_t index)
 {
   assert(index < map->bucket_mask + 1);
   return map->ctrl + index;
 }
 
 template <typename K, typename V, typename A>
-inline size_t find_insert_index(const Map<K, V, A>* map, size_t h1)
+inline std::size_t find_insert_index(const Map<K, V, A>* map, std::size_t h1)
 {
-  size_t bucket_mask = map->bucket_mask;
+  std::size_t bucket_mask = map->bucket_mask;
   auto seq = Probe_Sequence{
       h1 & bucket_mask,
       0,
@@ -732,10 +745,10 @@ inline size_t find_insert_index(const Map<K, V, A>* map, size_t h1)
 
   while (true)
   {
-    uint8_t* ctrl = ctrl_at(map, seq.pos);
+    std::uint8_t* ctrl = ctrl_at(map, seq.pos);
     Group group = group_load(ctrl);
 
-    size_t offset;
+    std::size_t offset;
     if (find_insert_index_in_group(map, group, &seq, &offset))
     {
       return offset;
@@ -746,29 +759,29 @@ inline size_t find_insert_index(const Map<K, V, A>* map, size_t h1)
 }
 
 template <typename K, typename V, typename A>
-CM_ENTRY_USE* entry_at(const Map<K, V, A>* map, size_t index)
+Entry<K, V>* entry_at(const Map<K, V, A>* map, std::size_t index)
 {
   assert(map->bucket_mask != 0);
   assert(index < map->bucket_mask + 1);
 
-  auto end = (CM_ENTRY_USE*)map->ctrl;
+  auto end = (Entry<K, V>*)map->ctrl;
   return end - index - 1;
 }
 
 template <typename K, typename V, typename A>
-void ctrl_set(Map<K, V, A>* map, size_t index, uint8_t tag)
+void ctrl_set(Map<K, V, A>* map, std::size_t index, std::uint8_t tag)
 {
-  size_t index2 = ((index - CM_GROUP_SIZE) & map->bucket_mask) + CM_GROUP_SIZE;
+  std::size_t index2 = ((index - CM_GROUP_SIZE) & map->bucket_mask) + CM_GROUP_SIZE;
 
   map->ctrl[index] = tag;
   map->ctrl[index2] = tag;
 }
 
 template <typename K, typename V, typename A>
-void insert_at(Map<K, V, A>* map, size_t index, uint8_t tag, const CM_ENTRY_USE* entry)
+void insert_at(Map<K, V, A>* map, std::size_t index, std::uint8_t tag, const Entry<K, V>* entry)
 {
-  uint8_t old_ctrl = map->ctrl[index];
-  map->growth_left -= (size_t)is_empty(old_ctrl);
+  std::uint8_t old_ctrl = map->ctrl[index];
+  map->growth_left -= (std::size_t)is_empty(old_ctrl);
   ctrl_set(map, index, tag);
   map->count += 1;
 
@@ -777,7 +790,7 @@ void insert_at(Map<K, V, A>* map, size_t index, uint8_t tag, const CM_ENTRY_USE*
 }
 
 template <typename K, typename V, typename A>
-bool resize(Map<K, V, A>* map, size_t new_capacity)
+bool resize(Map<K, V, A>* map, std::size_t new_capacity)
 {
   Map<K, V, A> new_map = {};
   if (!map_new_with(&new_map, map->allocator, new_capacity))
@@ -786,18 +799,18 @@ bool resize(Map<K, V, A>* map, size_t new_capacity)
   }
 
   Full_Iter iter = full_iter_new(map->ctrl, map->count);
-  size_t ctrl_offset;
+  std::size_t ctrl_offset;
 
   while (full_iter_next(&iter, &ctrl_offset))
   {
-    CM_ENTRY_USE* src = entry_at(map, ctrl_offset);
+    auto* src = entry_at(map, ctrl_offset);
     Hash h = hash(src->key);
 
-    size_t insert_index = find_insert_index(&new_map, h1(h));
+    std::size_t insert_index = find_insert_index(&new_map, h1(h));
     ctrl_set(&new_map, insert_index, h2(h));
 
-    CM_ENTRY_USE* dest = entry_at(&new_map, insert_index);
-    memcpy(dest, src, sizeof(CM_ENTRY_USE));
+    auto* dest = entry_at(&new_map, insert_index);
+    std::memcpy(dest, src, Entry_Size<K, V>);
   }
 
   new_map.count = map->count;
@@ -809,9 +822,10 @@ bool resize(Map<K, V, A>* map, size_t new_capacity)
 }
 
 template <typename K, typename V, typename A>
-inline bool find(const Map<K, V, A>* map, K key, size_t h1, uint8_t h2, size_t* out_index)
+inline bool find(const Map<K, V, A>* map, K key, std::size_t h1, std::uint8_t h2,
+                 std::size_t* out_index)
 {
-  size_t bucket_mask = map->bucket_mask;
+  std::size_t bucket_mask = map->bucket_mask;
   auto seq = Probe_Sequence{
       h1 & bucket_mask,
       0,
@@ -819,15 +833,15 @@ inline bool find(const Map<K, V, A>* map, K key, size_t h1, uint8_t h2, size_t* 
 
   while (true)
   {
-    uint8_t* ctrl = ctrl_at(map, seq.pos);
+    std::uint8_t* ctrl = ctrl_at(map, seq.pos);
     Group group = group_load(ctrl);
 
     Bitmask_Iter match_mask = group_match_tag(group, h2);
-    size_t bit;
+    std::size_t bit;
 
     while (bitmask_iter_next(&match_mask, &bit))
     {
-      size_t index = (seq.pos + bit) & bucket_mask;
+      std::size_t index = (seq.pos + bit) & bucket_mask;
 
       auto entry = entry_at(map, index);
       if (compare(key, entry->key))
@@ -847,11 +861,11 @@ inline bool find(const Map<K, V, A>* map, K key, size_t h1, uint8_t h2, size_t* 
 }
 
 template <typename K, typename V, typename A>
-inline bool find_or_find_insert(const Map<K, V, A>* map, K key, size_t h1, uint8_t h2,
-                                size_t* insert_index)
+inline bool find_or_find_insert(const Map<K, V, A>* map, K key, std::size_t h1, std::uint8_t h2,
+                                std::size_t* insert_index)
 {
   bool has_insert_index = false;
-  size_t bucket_mask = map->bucket_mask;
+  std::size_t bucket_mask = map->bucket_mask;
   auto seq = Probe_Sequence{
       h1 & bucket_mask,
       0,
@@ -859,11 +873,11 @@ inline bool find_or_find_insert(const Map<K, V, A>* map, K key, size_t h1, uint8
 
   while (true)
   {
-    uint8_t* ctrl = ctrl_at(map, seq.pos);
+    std::uint8_t* ctrl = ctrl_at(map, seq.pos);
     Group group = group_load(ctrl);
 
     Bitmask_Iter match_iter = group_match_tag(group, h2);
-    size_t bit;
+    std::size_t bit;
 
     // Check every slot in this group whose H2 fingerprint matches `h2`.
     // Fingerprints are only a fast filter, so each candidate still needs a
@@ -872,7 +886,7 @@ inline bool find_or_find_insert(const Map<K, V, A>* map, K key, size_t h1, uint8
     // empty/deleted slot is remembered as the possible insertion point.
     while (bitmask_iter_next(&match_iter, &bit))
     {
-      size_t index = (seq.pos + bit) & bucket_mask;
+      std::size_t index = (seq.pos + bit) & bucket_mask;
 
       auto entry = entry_at(map, index);
       if (compare(key, entry->key))
@@ -905,7 +919,7 @@ void map_shrink_to_fit(Map<K, V, A>* map)
   // The minimum capacity is 1 because map_new_with always allocates
   // at least CM_GROUP_SIZE buckets, ensuring we never have zero capacity.
   // Infact it doesn't matter whether we take the max with 1 or CM_GROUP_SIZE.
-  size_t new_capacity = CM_MAX(map->count, 1);
+  std::size_t new_capacity = impl::max<std::size_t>(map->count, 1);
   if (new_capacity >= impl::bucket_mask_to_capacity(map->bucket_mask))
   {
     return;
@@ -917,7 +931,7 @@ void map_shrink_to_fit(Map<K, V, A>* map)
 }
 
 template <typename K, typename V, typename A>
-bool map_reserve(Map<K, V, A>* map, size_t additional)
+bool map_reserve(Map<K, V, A>* map, std::size_t additional)
 {
   // growth_left is the remaining insertion budget before the table must
   // grow. DELETED tombstones spend this budget without raising count, so
@@ -928,21 +942,21 @@ bool map_reserve(Map<K, V, A>* map, size_t additional)
   }
 
   // TODO: check overflow
-  size_t min_capacity = map->count + additional;
-  size_t total_capacity = impl::bucket_mask_to_capacity(map->bucket_mask);
+  std::size_t min_capacity = map->count + additional;
+  std::size_t total_capacity = impl::bucket_mask_to_capacity(map->bucket_mask);
   // TODO: check for rehash if we have plenty of space left
 
-  return impl::resize(map, CM_MAX(min_capacity, total_capacity + 1));
+  return impl::resize(map, impl::max<std::size_t>(min_capacity, total_capacity + 1));
 }
 
 template <typename K, typename V, typename A>
 bool map_lookup(const Map<K, V, A>* map, K key, V* out_value)
 {
   Hash h = impl::hash(key);
-  size_t h1_val = impl::h1(h);
-  uint8_t h2_val = impl::h2(h);
+  std::size_t h1_val = impl::h1(h);
+  std::uint8_t h2_val = impl::h2(h);
 
-  size_t index;
+  std::size_t index;
   if (impl::find(map, key, h1_val, h2_val, &index))
   {
     auto entry = impl::entry_at(map, index);
@@ -957,10 +971,10 @@ template <typename K, typename V, typename A>
 bool map_insert(Map<K, V, A>* map, K key, V value)
 {
   Hash h = impl::hash(key);
-  size_t h1_val = impl::h1(h);
-  uint8_t h2_val = impl::h2(h);
+  std::size_t h1_val = impl::h1(h);
+  std::uint8_t h2_val = impl::h2(h);
 
-  size_t insert_index;
+  std::size_t insert_index;
   if (impl::find_or_find_insert(map, key, h1_val, h2_val, &insert_index))
   {
     auto entry = impl::entry_at(map, insert_index);
@@ -978,7 +992,7 @@ bool map_insert(Map<K, V, A>* map, K key, V value)
     insert_index = impl::find_insert_index(map, h1_val);
   }
 
-  CM_ENTRY_USE entry = impl::entry_new(key, value);
+  auto entry = impl::entry_new(key, value);
   impl::insert_at(map, insert_index, h2_val, &entry);
   return true;
 }
@@ -987,12 +1001,12 @@ template <typename K, typename V, typename A>
 bool map_remove(Map<K, V, A>* map, K key)
 {
   Hash h = impl::hash(key);
-  size_t index;
+  std::size_t index;
   if (!impl::find(map, key, impl::h1(h), impl::h2(h), &index))
   {
     return false;
   }
-  size_t index_before = (index - CM_GROUP_SIZE) & map->bucket_mask;
+  std::size_t index_before = (index - CM_GROUP_SIZE) & map->bucket_mask;
 
   // We can't always mark a removed slot EMPTY. Lookup stops probing at EMPTY,
   // so clearing a slot in the middle of a probe chain could make displaced
@@ -1017,7 +1031,7 @@ bool map_remove(Map<K, V, A>* map, K key)
   impl::Bitmask empty_before = impl::group_match_empty(group_before);
   impl::Bitmask empty_after = impl::group_match_empty(group_after);
 
-  size_t num_zeros =
+  std::size_t num_zeros =
       impl::bitmask_leading_zeros(empty_before) + impl::bitmask_trailing_zeros(empty_after);
 
   if (num_zeros >= CM_GROUP_SIZE)
@@ -1060,7 +1074,7 @@ Map_Iter<K, V, A> map_iter_new(Map<K, V, A>* map)
 template <typename K, typename V, typename A>
 bool map_iter_next(Map_Iter<K, V, A>* iter, K const** out_key, V** out_value)
 {
-  size_t offset;
+  std::size_t offset;
 
   if (!impl::full_iter_next(&iter->full_iter, &offset))
   {
@@ -1101,7 +1115,7 @@ Set<K, A> set_new(A* allocator)
 }
 
 template <typename K, typename A>
-bool set_new_with(Set<K, A>* set, A* allocator, size_t init_capacity)
+bool set_new_with(Set<K, A>* set, A* allocator, std::size_t init_capacity)
 {
   return map_new_with(&set->map, allocator, init_capacity);
 }
