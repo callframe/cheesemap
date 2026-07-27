@@ -1,7 +1,7 @@
 Cheesemap
 =========
 
-Cheesemap is a fast C++17 hash map and hash set. It uses a
+Cheesemap is a fast C++20 hash map and hash set. It uses a
 Swiss-table-style open-addressing layout with control bytes, SIMD group probing
 on SSE2 targets, and a scalar fallback.
 
@@ -59,7 +59,7 @@ With CMake:
     cmake -S . -B build
     cmake --build build
 
-Cheesemap requires C++17 or later. MSVC is not supported at this time.
+Cheesemap requires C++20 or later.
 
 
 Benchmarks

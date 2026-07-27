@@ -11,7 +11,7 @@ add_subdirectory(${ABSEIL_DIR})
 
 function(add_competitive_bench target source)
     add_executable(${target} ${source})
-    target_compile_features(${target} PRIVATE cxx_std_17)
+    target_compile_features(${target} PRIVATE cxx_std_20)
     target_include_directories(${target} PRIVATE
         ${CM_DIR}
         ${BENCHES_DIR}

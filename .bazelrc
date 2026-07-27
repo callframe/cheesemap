@@ -2,3 +2,4 @@ build --action_env=CC=clang
 build --action_env=CXX=clang++
 
 build:native --copt=-march=native
+build --cxxopt=-std=c++20

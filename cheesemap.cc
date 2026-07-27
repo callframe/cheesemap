@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+#include <bit>
 #include <cassert>
 #include <climits>
 #include <cstddef>
@@ -9,36 +11,34 @@
 
 #if defined(_MSVC_LANG)
 #define CM_LANG _MSVC_LANG
-#include <intrin.h>
 
+// ARM64EC compiles to ARM64 but still defines _M_X64, so it needs excluding.
+#if (defined(_M_X64) && !defined(_M_ARM64EC)) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)
+#define CM_SSE2 1
+#else
+#define CM_SSE2 0
+#endif
+
+// GCC, Clang
 #elif defined(__cplusplus)
 #define CM_LANG __cplusplus
+
+#if defined(__SSE2__)
+#define CM_SSE2 1
+#else
+#define CM_SSE2 0
+#endif
 
 #else
 #error "Cheesemap requires C++"
 #endif
 
-#if CM_LANG < 201703L
-#error "Cheesemap requires C++17 or later"
+#if CM_LANG < 202002L
+#error "Cheesemap requires C++20 or later"
 #endif
 
-#define CM_REPEAT_1(x) x
-#define CM_REPEAT_2(x) CM_REPEAT_1(x), CM_REPEAT_1(x)
-#define CM_REPEAT_4(x) CM_REPEAT_2(x), CM_REPEAT_2(x)
-#define CM_REPEAT_8(x) CM_REPEAT_4(x), CM_REPEAT_4(x)
-#define CM_REPEAT_16(x) CM_REPEAT_8(x), CM_REPEAT_8(x)
-
-#if defined(__SSE2__)
+#if CM_SSE2
 #include <emmintrin.h>
-
-#define CM_GROUP_SIZE 16
-#define CM_BITMASK_STRIDE 1
-#define CM_NO_FALLBACK
-#endif
-
-#if !defined(CM_NO_FALLBACK)
-#define CM_GROUP_SIZE __SIZEOF_POINTER__
-#define CM_BITMASK_STRIDE CHAR_BIT
 #endif
 
 namespace cheesemap
@@ -206,7 +206,7 @@ void dealloc(A* state, std::uint8_t* ptr, std::size_t size, std::size_t align)
  * the high bit set. FULL buckets store the 7-bit H2 hash fingerprint with the
  * high bit clear, which lets group matching test many buckets at once.
  *
- * The control array also stores a cloned prefix of CM_GROUP_SIZE bytes after
+ * The control array also stores a cloned prefix of Group_Size bytes after
  * the real buckets, so group loads can wrap around the end of the table.
  */
 
@@ -233,15 +233,23 @@ enum : std::uint8_t
   Word_Width = sizeof(std::size_t) * CHAR_BIT,
 };
 
-#if defined(__SSE2__)
+#if CM_SSE2
 using Group = __m128i;
 using Bitmask = std::uint16_t;
-#endif
 
-#if !defined(CM_NO_FALLBACK)
+constexpr inline std::size_t Group_Size = 16;
+constexpr inline std::size_t Bitmask_Stride = 1;
+
+#else
 using Group = std::size_t;
 using Bitmask = Group;
+
+constexpr inline std::size_t Group_Size = sizeof(std::size_t);
+constexpr inline std::size_t Bitmask_Stride = CHAR_BIT;
 #endif
+
+static_assert(Group_Size == 16 || Group_Size == 8 || Group_Size == 4,
+              "cheesemap supports group sizes of 4, 8 or 16 bytes");
 
 /**
  *
@@ -249,7 +257,7 @@ using Bitmask = Group;
  */
 
 // TODO: check whether passing my pointer is faster
-inline Group group_load(const std::uint8_t* ctrl);
+inline Group group_load(std::uint8_t const* ctrl);
 inline Bitmask group_match_tag(Group group, std::uint8_t tag);
 inline Bitmask group_match_empty_or_deleted(Group group);
 inline Bitmask group_match_empty(Group group);
@@ -260,12 +268,12 @@ inline Bitmask group_match_full(Group group);
  * SSE2 implementation of the group actions
  */
 
-#if defined(__SSE2__)
-inline Group group_load(const std::uint8_t* ctrl) { return _mm_loadu_si128((const Group*)ctrl); }
+#if CM_SSE2
+inline Group group_load(std::uint8_t const* ctrl) { return _mm_loadu_si128((Group const*)ctrl); }
 
 inline Bitmask group_match_tag(Group group, std::uint8_t tag)
 {
-  const __m128i tagvec = _mm_set1_epi8(tag);
+  __m128i const tagvec = _mm_set1_epi8(tag);
   __m128i cmp = _mm_cmpeq_epi8(group, tagvec);
   // movemask packs the top bit of each byte into a 16-bit mask, giving one
   // candidate bit per ctrl byte in the loaded group.
@@ -287,20 +295,17 @@ inline Bitmask group_match_full(Group group)
   // inverse of the special-slot mask for this 16-byte group.
   return ~group_match_empty_or_deleted(group);
 }
-#endif
 
 /**
  *
  * Scalar implementation of the group actions
  */
 
-#if !defined(CM_NO_FALLBACK)
+#else
 inline Group group_repeat(std::uint8_t v) { return (Group)v * (((Group)-1) / (std::uint8_t)~0); }
 
-inline Group group_load(const std::uint8_t* ctrl)
+inline Group group_load(std::uint8_t const* ctrl)
 {
-  assert(ctrl != nullptr);
-
   Group v;
   std::memcpy(&v, ctrl, sizeof(v));
   return v;
@@ -339,75 +344,42 @@ inline Bitmask group_match_tag(Group group, std::uint8_t tag)
  * map has no growth left, and resize before writing.
  */
 
-inline constexpr std::uint8_t Init_Ctrl[CM_GROUP_SIZE] = {
-#if CM_GROUP_SIZE == 16
-    CM_REPEAT_16(Ctrl_Empty)
-#elif CM_GROUP_SIZE == 8
-    CM_REPEAT_8(Ctrl_Empty)
-#elif CM_GROUP_SIZE == 4
-    CM_REPEAT_4(Ctrl_Empty)
-#else
-#error "group size is not supported"
-#endif
-};
+constexpr std::array<std::uint8_t, Group_Size> init_ctrl_new()
+{
+  std::array<std::uint8_t, Group_Size> block{};
+  for (auto& byte : block) byte = Ctrl_Empty;
+  return block;
+}
+
+constexpr inline auto Init_Ctrl = init_ctrl_new();
 
 /**
  *
  * Return the number of trailing zero bits in a bitmask.
- * Returns CM_GROUP_SIZE when the mask is zero.
+ * Returns Group_Size when the mask is zero.
  */
 
 inline std::uint32_t bitmask_trailing_zeros(Bitmask mask)
 {
-  if (mask == 0)
-  {
-    return CM_GROUP_SIZE;
-  }
-
-#if defined(__x86_64__)
-  return __builtin_ctzll(mask) / CM_BITMASK_STRIDE;
-#elif defined(__i386__)
-  return __builtin_ctz(mask) / CM_BITMASK_STRIDE;
-#else
-#error "target platform is not supported"
-#endif
-}
-
-/**
- *
- * Return the number of leading zero bits.
- * Returns Word_Width when x is zero.
- */
-
-inline std::uint32_t leading_zeros(std::size_t x)
-{
-  if (x == 0)
-  {
-    return Word_Width;
-  }
-
-#if defined(__x86_64__)
-  return __builtin_clzll(x);
-#elif defined(__i386__)
-  return __builtin_clz(x);
-#else
-#error "target platform is not supported"
-#endif
+  return (std::uint32_t)std::countr_zero(mask) / (std::uint32_t)Bitmask_Stride;
 }
 
 inline std::uint32_t bitmask_leading_zeros(Bitmask mask)
 {
   // Must return slot units, like bitmask_trailing_zeros.
-#if CM_BITMASK_STRIDE == 1
-  // Dense bitmask, one bit per slot
-  return leading_zeros(mask) - (Word_Width - CM_GROUP_SIZE);
-#else
-  // SWAR bitmask, one byte per slot
-  return leading_zeros(mask) / CM_BITMASK_STRIDE;
-#endif
+  if constexpr (Bitmask_Stride == 1)
+  {
+    // Dense bitmask, one bit per slot
+    return (std::uint32_t)std::countl_zero(mask) - (std::uint32_t)(Word_Width - Group_Size);
+  }
+  else
+  {
+    // SWAR bitmask, one byte per slot
+    return (std::uint32_t)std::countl_zero(mask) / (std::uint32_t)Bitmask_Stride;
+  }
 }
 
-[[maybe_unused]] inline bool is_pow2(std::size_t x) { return x != 0 && (x & (x - 1)) == 0; }
+[[maybe_unused]] inline bool is_pow2(std::size_t x) { return std::has_single_bit(x); }
 
 template <typename T>
 constexpr T max(T x, T y)
@@ -415,12 +387,7 @@ constexpr T max(T x, T y)
   return x > y ? x : y;
 }
 
-inline std::size_t next_pow2(std::size_t x)
-{
-  if (x <= 1) return 1;
-
-  return ((std::size_t)1 << (Word_Width - leading_zeros(x - 1)));
-}
+inline std::size_t next_pow2(std::size_t x) { return std::bit_ceil(x); }
 
 inline std::size_t bucket_mask_to_capacity(std::size_t bucket_mask)
 {
@@ -446,7 +413,7 @@ inline std::size_t capacity_to_bucket(std::size_t capacity)
 {
   // Choose enough buckets to hold `capacity` items at a 7/8 max load factor.
   std::size_t adjusted_capacity = capacity * Load_Denom / Load_Num;
-  return max<std::size_t>(next_pow2(adjusted_capacity), CM_GROUP_SIZE);
+  return max<std::size_t>(next_pow2(adjusted_capacity), Group_Size);
 }
 
 [[maybe_unused]] inline bool is_special(std::uint8_t tag)
@@ -542,9 +509,9 @@ inline std::size_t full_iter_next_inner(Full_Iter* iter)
       return it.bucket_index + group_offset;
     }
 
-    it.ctrl += CM_GROUP_SIZE;
+    it.ctrl += Group_Size;
     it.bitmask_iter = full_iter_load_mask(it.ctrl);
-    it.bucket_index += CM_GROUP_SIZE;
+    it.bucket_index += Group_Size;
   }
 }
 
@@ -586,7 +553,7 @@ inline void probe_sequence_next(Probe_Sequence* seq, std::size_t bucket_mask)
   // Because the table has a power-of-two number of buckets, masking by
   // `bucket_mask` wraps this sequence through every group.
 
-  s.stride += CM_GROUP_SIZE;
+  s.stride += Group_Size;
   s.pos += s.stride;
   s.pos &= bucket_mask;
   *seq = s;
@@ -628,18 +595,18 @@ inline std::size_t layout_for(std::size_t num_buckets, std::size_t& out_ctrl_off
   //
   // `ctrl` points at the first control byte. Entries are addressed backwards
   // from `ctrl`, so bucket 0 lives immediately before the control region and
-  // bucket N - 1 lives at the start of the allocation. The extra CM_GROUP_SIZE
+  // bucket N - 1 lives at the start of the allocation. The extra Group_Size
   // control bytes clone the first group so group loads can wrap without a
   // branch.
 
-  std::size_t ctrl_align = max<std::size_t>(CM_GROUP_SIZE, Entry_Align<K, V>);
+  std::size_t ctrl_align = max<std::size_t>(Group_Size, Entry_Align<K, V>);
 
   // TODO: check for overflow
 
   std::size_t base_offset = Entry_Size<K, V> * num_buckets;
   std::size_t ctrl_offset = alignup(base_offset, ctrl_align);
 
-  std::size_t total_size = ctrl_offset + num_buckets + CM_GROUP_SIZE;
+  std::size_t total_size = ctrl_offset + num_buckets + Group_Size;
   total_size = alignup(total_size, Entry_Align<K, V>);
 
   out_ctrl_offset = ctrl_offset;
@@ -670,7 +637,7 @@ struct Map
 template <typename K, typename V, typename A>
 Map<K, V, A> map_new(A* allocator)
 {
-  return Map<K, V, A>{0, 0, 0, (std::uint8_t*)impl::Init_Ctrl, allocator};
+  return Map<K, V, A>{0, 0, 0, (std::uint8_t*)impl::Init_Ctrl.data(), allocator};
 }
 
 template <typename K, typename V, typename A>
@@ -691,7 +658,7 @@ bool map_new_with(Map<K, V, A>* map, A* allocator, std::size_t init_capacity)
   assert(impl::is_aligned((std::size_t)entries, impl::Entry_Align<K, V>) == true);
 
   std::uint8_t* ctrl = entries + ctrl_offset;
-  std::memset(ctrl, impl::Ctrl_Empty, num_buckets + CM_GROUP_SIZE);
+  std::memset(ctrl, impl::Ctrl_Empty, num_buckets + impl::Group_Size);
 
   std::size_t growth_left = impl::bucket_mask_to_capacity(num_buckets - 1);
   *map = Map<K, V, A>{growth_left, 0, num_buckets - 1, ctrl, allocator};
@@ -702,7 +669,7 @@ template <typename K, typename V, typename A>
 void map_drop(Map<K, V, A>* map)
 {
   A* allocator = map->allocator;
-  if (map->ctrl == impl::Init_Ctrl) return;
+  if (map->ctrl == impl::Init_Ctrl.data()) return;
 
   std::size_t ctrl_offset;
   std::size_t total_size = impl::layout_for<K, V>(map->bucket_mask + 1, ctrl_offset);
@@ -716,8 +683,8 @@ namespace impl
 {
 
 template <typename K, typename V, typename A>
-inline bool find_insert_index_in_group(const Map<K, V, A>* map, Group group,
-                                       const Probe_Sequence* seq, std::size_t* offset)
+inline bool find_insert_index_in_group(Map<K, V, A> const* map, Group group,
+                                       Probe_Sequence const* seq, std::size_t* offset)
 {
   Bitmask mask = group_match_empty_or_deleted(group);
   if (mask == 0) return false;
@@ -728,14 +695,14 @@ inline bool find_insert_index_in_group(const Map<K, V, A>* map, Group group,
 }
 
 template <typename K, typename V, typename A>
-inline std::uint8_t* ctrl_at(const Map<K, V, A>* map, std::size_t index)
+inline std::uint8_t* ctrl_at(Map<K, V, A> const* map, std::size_t index)
 {
   assert(index < map->bucket_mask + 1);
   return map->ctrl + index;
 }
 
 template <typename K, typename V, typename A>
-inline std::size_t find_insert_index(const Map<K, V, A>* map, std::size_t h1)
+inline std::size_t find_insert_index(Map<K, V, A> const* map, std::size_t h1)
 {
   std::size_t bucket_mask = map->bucket_mask;
   auto seq = Probe_Sequence{
@@ -759,7 +726,7 @@ inline std::size_t find_insert_index(const Map<K, V, A>* map, std::size_t h1)
 }
 
 template <typename K, typename V, typename A>
-Entry<K, V>* entry_at(const Map<K, V, A>* map, std::size_t index)
+Entry<K, V>* entry_at(Map<K, V, A> const* map, std::size_t index)
 {
   assert(map->bucket_mask != 0);
   assert(index < map->bucket_mask + 1);
@@ -771,14 +738,14 @@ Entry<K, V>* entry_at(const Map<K, V, A>* map, std::size_t index)
 template <typename K, typename V, typename A>
 void ctrl_set(Map<K, V, A>* map, std::size_t index, std::uint8_t tag)
 {
-  std::size_t index2 = ((index - CM_GROUP_SIZE) & map->bucket_mask) + CM_GROUP_SIZE;
+  std::size_t index2 = ((index - Group_Size) & map->bucket_mask) + Group_Size;
 
   map->ctrl[index] = tag;
   map->ctrl[index2] = tag;
 }
 
 template <typename K, typename V, typename A>
-void insert_at(Map<K, V, A>* map, std::size_t index, std::uint8_t tag, const Entry<K, V>* entry)
+void insert_at(Map<K, V, A>* map, std::size_t index, std::uint8_t tag, Entry<K, V> const* entry)
 {
   std::uint8_t old_ctrl = map->ctrl[index];
   map->growth_left -= (std::size_t)is_empty(old_ctrl);
@@ -822,7 +789,7 @@ bool resize(Map<K, V, A>* map, std::size_t new_capacity)
 }
 
 template <typename K, typename V, typename A>
-inline bool find(const Map<K, V, A>* map, K key, std::size_t h1, std::uint8_t h2,
+inline bool find(Map<K, V, A> const* map, K key, std::size_t h1, std::uint8_t h2,
                  std::size_t* out_index)
 {
   std::size_t bucket_mask = map->bucket_mask;
@@ -861,7 +828,7 @@ inline bool find(const Map<K, V, A>* map, K key, std::size_t h1, std::uint8_t h2
 }
 
 template <typename K, typename V, typename A>
-inline bool find_or_find_insert(const Map<K, V, A>* map, K key, std::size_t h1, std::uint8_t h2,
+inline bool find_or_find_insert(Map<K, V, A> const* map, K key, std::size_t h1, std::uint8_t h2,
                                 std::size_t* insert_index)
 {
   bool has_insert_index = false;
@@ -917,8 +884,8 @@ void map_shrink_to_fit(Map<K, V, A>* map)
 {
   // Shrink to fit recalculates capacity based on current item count.
   // The minimum capacity is 1 because map_new_with always allocates
-  // at least CM_GROUP_SIZE buckets, ensuring we never have zero capacity.
-  // Infact it doesn't matter whether we take the max with 1 or CM_GROUP_SIZE.
+  // at least Group_Size buckets, ensuring we never have zero capacity.
+  // Infact it doesn't matter whether we take the max with 1 or Group_Size.
   std::size_t new_capacity = impl::max<std::size_t>(map->count, 1);
   if (new_capacity >= impl::bucket_mask_to_capacity(map->bucket_mask))
   {
@@ -950,7 +917,7 @@ bool map_reserve(Map<K, V, A>* map, std::size_t additional)
 }
 
 template <typename K, typename V, typename A>
-bool map_lookup(const Map<K, V, A>* map, K key, V* out_value)
+bool map_lookup(Map<K, V, A> const* map, K key, V* out_value)
 {
   Hash h = impl::hash(key);
   std::size_t h1_val = impl::h1(h);
@@ -1006,16 +973,16 @@ bool map_remove(Map<K, V, A>* map, K key)
   {
     return false;
   }
-  std::size_t index_before = (index - CM_GROUP_SIZE) & map->bucket_mask;
+  std::size_t index_before = (index - impl::Group_Size) & map->bucket_mask;
 
   // We can't always mark a removed slot EMPTY. Lookup stops probing at EMPTY,
   // so clearing a slot in the middle of a probe chain could make displaced
   // entries unreachable.
   //
   // To decide whether the slot can become EMPTY, we examine the surrounding
-  // control bytes. `leading_zeros(empty_before)` counts the contiguous
+  // control bytes. `bitmask_leading_zeros(empty_before)` counts the contiguous
   // non-EMPTY bytes ending at the previous group, while
-  // `trailing_zeros(empty_after)` counts the contiguous non-EMPTY bytes
+  // `bitmask_trailing_zeros(empty_after)` counts the contiguous non-EMPTY bytes
   // starting at the current group.
   //
   // If the combined span is at least one full group wide, then this slot may
@@ -1034,7 +1001,7 @@ bool map_remove(Map<K, V, A>* map, K key)
   std::size_t num_zeros =
       impl::bitmask_leading_zeros(empty_before) + impl::bitmask_trailing_zeros(empty_after);
 
-  if (num_zeros >= CM_GROUP_SIZE)
+  if (num_zeros >= impl::Group_Size)
   {
     impl::ctrl_set(map, index, impl::Ctrl_Deleted);
   }
@@ -1133,7 +1100,7 @@ bool set_insert(Set<K, A>* set, K key)
 }
 
 template <typename K, typename A>
-bool set_lookup(const Set<K, A>* set, K key)
+bool set_lookup(Set<K, A> const* set, K key)
 {
   Unit unit;
   return map_lookup(&set->map, key, &unit);
