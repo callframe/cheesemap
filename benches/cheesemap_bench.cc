@@ -54,7 +54,10 @@ class CheesemapAdapter
 
   bool lookup(BenchKey key, BenchValue& value) const
   {
-    return cheesemap::map_lookup(&map_, key, &value);
+    BenchValue const* found = cheesemap::map_lookup(&map_, key);
+    if (found == nullptr) return false;
+    value = *found;
+    return true;
   }
 
   bool remove(BenchKey key) { return cheesemap::map_remove(&map_, key); }

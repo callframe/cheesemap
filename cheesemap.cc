@@ -911,21 +911,35 @@ bool map_reserve(Map<K, V, A>* map, std::size_t additional)
 }
 
 template <typename K, typename V, typename A>
-bool map_lookup(Map<K, V, A> const* map, K key, V* out_value)
+V* map_lookup(Map<K, V, A>* map, K key)
 {
   Hash h = impl::hash(key);
   std::size_t h1_val = impl::h1(h);
   std::uint8_t h2_val = impl::h2(h);
 
   std::size_t index;
-  if (impl::find(map, key, h1_val, h2_val, &index))
+  if (!impl::find(map, key, h1_val, h2_val, &index))
   {
-    auto entry = impl::entry_at(map, index);
-    *out_value = entry->value;
-    return true;
+    return nullptr;
   }
 
-  return false;
+  return &impl::entry_at(map, index)->value;
+}
+
+template <typename K, typename V, typename A>
+V const* map_lookup(Map<K, V, A> const* map, K key)
+{
+  Hash h = impl::hash(key);
+  std::size_t h1_val = impl::h1(h);
+  std::uint8_t h2_val = impl::h2(h);
+
+  std::size_t index;
+  if (!impl::find(map, key, h1_val, h2_val, &index))
+  {
+    return nullptr;
+  }
+
+  return &impl::entry_at(map, index)->value;
 }
 
 template <typename K, typename V, typename A>
@@ -1096,8 +1110,7 @@ bool set_insert(Set<K, A>* set, K key)
 template <typename K, typename A>
 bool set_lookup(Set<K, A> const* set, K key)
 {
-  Unit unit;
-  return map_lookup(&set->map, key, &unit);
+  return map_lookup(&set->map, key) != nullptr;
 }
 
 template <typename K, typename A>
